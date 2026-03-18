@@ -113,10 +113,16 @@ class MigratableModel(BaseModel):
         if not data:
             return data
 
+        # If no explicit model_version is provided, treat the data as already at
+        # the current version and simply stamp the current version number.
+        if "model_version" not in data:
+            data["model_version"] = cls.get_model_version()
+            return data
+
         chain = cls.get_version_chain()
         latest_version = len(chain)
 
-        file_version = data.get("model_version", 1)
+        file_version = data["model_version"]
         # Validation to prevent invalid version numbers that could cause issues in migration logic below.
         if not isinstance(file_version, int) or file_version < 1:
             raise ValueError(
