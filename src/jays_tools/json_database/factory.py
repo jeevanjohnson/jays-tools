@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from .database import _JsonDatabase
 
 # Dev Notes:
-# factory = a function or class whos sole purpose is to create instances of a class, in this case, JsonDatabaseInit or JsonDatabaseOptional.
+# factory = a function or class whose sole purpose is to create instances of a class, in this case, `_JsonDatabase` parametrized with the provided Pydantic model.
 
 T = TypeVar("T", bound=BaseModel)
 
