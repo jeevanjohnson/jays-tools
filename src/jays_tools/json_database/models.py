@@ -70,8 +70,17 @@ class MigratableModel(BaseModel):
     def get_version_chain(cls) -> tuple[type["MigratableModel"], ...]:
         chain: list[type["MigratableModel"]] = []
         current: type[MigratableModel] | None = cls
+        visited: set[type["MigratableModel"]] = set()
 
         while current is not None:
+            if current in visited:
+                # Detect and prevent cycles in the migration chain (including self-references).
+                raise TypeError(
+                    "Detected a cycle in the MigratableModel version chain involving "
+                    f"{current.__name__}. Ensure 'previous_model' creates a linear, "
+                    "acyclic chain of model versions."
+                )
+            visited.add(current)
             chain.append(current)
             current = current._previous_model
 
