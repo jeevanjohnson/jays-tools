@@ -1,9 +1,12 @@
-from typing import Literal, Type, TypeVar, overload
 from pathlib import Path
-from .database import JsonDatabaseInit
-from .database import JsonDatabaseOptional
+from typing import Literal, Type, TypeVar, overload
 
 from pydantic import BaseModel
+
+from .database import JsonDatabaseInit, JsonDatabaseOptional
+
+# Dev Notes:
+# factory = a function or class whos sole purpose is to create instances of a class, in this case, JsonDatabaseInit or JsonDatabaseOptional.
 
 T = TypeVar("T", bound=BaseModel)
 
