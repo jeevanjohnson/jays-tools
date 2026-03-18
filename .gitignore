@@ -2,6 +2,7 @@
 .vscode/
 __pycache__/
 *test*
+tmp_legacy.json
 ./dist
 .pypirc
 config.py
