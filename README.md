@@ -87,14 +87,14 @@ JsonDatabase follows a typed repository-style pattern with context-managed units
 
 ```mermaid
 flowchart TD
-    A[JsonDatabase path model] --> B[_JsonDatabase Created]
-    B --> C[Auto-creates file if missing]
-    C --> D{Context Manager}
-    D -->|Sync| E[Read]
-    D -->|Async| F[Read & Acquire Async Lock via Thread]
-    E --> G[Modify Data]
+    A["JsonDatabase path model"] --> B["_JsonDatabase created"]
+    B --> C["Auto-creates file if missing"]
+    C --> D{"Context manager"}
+    D -->|"Sync"| E["Read"]
+    D -->|"Async"| F["Read and acquire async lock via thread"]
+    E --> G["Modify data"]
     F --> G
-    G --> H[Write (release async lock if held)]
+    G --> H["Write and release async lock if held"]
 ```
 
 #### Migrations
