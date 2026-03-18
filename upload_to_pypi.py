@@ -7,6 +7,8 @@ import shutil
 # - Referencing: https://semver.org/
 # - `map` takes a function and some arguments, and applies the function to each of the arguments. 
 #    It returns an iterator (a lazy generator) that you can convert to a list or iterate over directly.
+# - TODO: License file, currently using MIT License, but should add a LICENSE file to the repo.
+# - TODO: This was written quickly, improve readability and error handling, for production use.
 
 def get_name(file_path: str) -> str:
     with open(file_path, "r") as f:
