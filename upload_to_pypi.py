@@ -98,22 +98,16 @@ subprocess.run(
     capture_output=True,
 )
 
-result = subprocess.run(
-    [sys.executable, "-m", "hatch", "build"],
+
+subprocess.run(
+    [sys.executable, "-m", "pip", "install", "build"],
     capture_output=True,
 )
 
-if result.returncode != 0:
-    subprocess.run(
-        [sys.executable, "-m", "pip", "install", "hatch"],
-        capture_output=True,
-    )
-
 result = subprocess.run(
-    [sys.executable, "-m", "hatch", "build"],
+    [sys.executable, "-m", "build"],
     capture_output=True,
 )
-
 if result.returncode != 0:
     print("Build failed:")
     print(result.stdout.decode())
@@ -131,7 +125,7 @@ result = subprocess.run(
     capture_output=True,
 )
 
-if result.stderr:
+if result.stderr or result.returncode != 0:
     print("Upload failed:")
     print(result.stderr)
 else:
@@ -139,4 +133,7 @@ else:
     print(f"You can find latest version here: https://pypi.org/project/{name}/{new_version}/")
 
 # Now delete dist folder
-shutil.rmtree("dist")
+try:
+    shutil.rmtree("dist")
+except FileNotFoundError:
+    pass
