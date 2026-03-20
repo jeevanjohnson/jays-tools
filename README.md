@@ -1,4 +1,4 @@
-# Jay Tools
+# Jays Tools
 
 This package is a collection of tools that I tend to find useful in my projects. It is not meant to be a comprehensive library, but rather a collection of utilities that I find useful.
 
