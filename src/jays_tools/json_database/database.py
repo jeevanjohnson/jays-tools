@@ -59,13 +59,22 @@ class _JsonDatabase(Generic[T]):
 
     async def write_async(self, data: T) -> None:
         await asyncio.to_thread(self.write, data)
+    
+    def set(self, data: T) -> None:
+        if not isinstance(data, self.database_model):
+            raise TypeError(
+                f"set() expected {self.database_model.__name__}, got {type(data).__name__}"
+            )
+
+        # Prevents Reference issues when a user does something to data after calling set.
+        self.database = data.model_copy(deep=True)
 
     async def __aenter__(self) -> T:
         lock = self.get_lock()
         await lock.acquire()
 
         self.database = await self.read_async()
-        return self.database
+        return self.database.model_copy(deep=True)
 
     async def __aexit__(
         self,
@@ -129,7 +138,7 @@ class _JsonDatabase(Generic[T]):
 
     def __enter__(self) -> T:
         self.database = self.read()
-        return self.database
+        return self.database.model_copy(deep=True)
 
     def __exit__(
         self,

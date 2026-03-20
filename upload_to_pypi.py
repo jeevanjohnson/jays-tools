@@ -96,38 +96,62 @@ update_version_in_file("pyproject.toml", new_version)
 subprocess.run(
     [sys.executable, "-m", "pip", "install", "hatchling", "twine"],
     capture_output=True,
+    text=True,
 )
 
 
 subprocess.run(
     [sys.executable, "-m", "pip", "install", "build"],
     capture_output=True,
+    text=True,
 )
 
 result = subprocess.run(
     [sys.executable, "-m", "build"],
     capture_output=True,
+    text=True,
 )
 if result.returncode != 0:
     print("Build failed:")
-    print(result.stdout.decode())
-    print(result.stderr.decode())
+    print(result.stdout)
+    print(result.stderr)
 
     # revert version change
     update_version_in_file("pyproject.toml", version)
+    sys.exit(1)
+
+# Check if the package with the new version already exists on PyPI
+result = subprocess.run(
+    [
+        sys.executable, "-m", "pip", "install", f"{name}=={new_version}",
+    ]
+)
+
+if result.returncode == 0:
+    print(f"Version {new_version} of package {name} already exists on PyPI. Please update the version number manually and try again.")
+    # revert version change
+    update_version_in_file("pyproject.toml", version)
+    sys.exit(1)
 
 result = subprocess.run(
     [
         sys.executable, "-m", "twine", "upload", "dist/*",
+        "--skip-existing",
+        "--non-interactive",
         "--username", "__token__",
         "--password", config.PYPI_API_TOKEN,
     ],
     capture_output=True,
+    text=True,
 )
 
-if result.stderr or result.returncode != 0:
+if result.returncode != 0:
     print("Upload failed:")
     print(result.stderr)
+    print(result.stdout)
+    # revert version change
+    update_version_in_file("pyproject.toml", version)
+    sys.exit(1)
 else:
     print("Upload successful!")
     print(f"You can find latest version here: https://pypi.org/project/{name}/{new_version}/")

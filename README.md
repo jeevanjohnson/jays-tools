@@ -52,18 +52,20 @@ class Users(BaseModel):
 # Create database. File is auto-created if it doesn't exist.
 db = JsonDatabase("users.json", Users)
 
-# Sync usage - reads, modifies, writes on exit
+# Sync usage - read, mutate, then persist with set(...)
 with db as users_data:
     users_data.users.append(User(id=1, name="Jay"))
     users_data.users.append(User(id=2, name="John"))
     users_data.total = len(users_data.users)
-    # Automatically writes on context exit
+    db.set(users_data)
+    # Context exit writes the value most recently provided to set(...)
 
-# Async usage - acquires lock, same pattern, non-blocking I/O via thread pool
+# Async usage - same pattern, non-blocking I/O via thread pool
 async with db as users_data:
     users_data.users.append(User(id=3, name="Jane"))
     users_data.total = len(users_data.users)
-    # Automatically writes on context exit
+    db.set(users_data)
+    # Context exit writes the value most recently provided to set(...)
 ```
 
 #### Design Philosophy
@@ -73,8 +75,8 @@ JsonDatabase is intentionally designed for single-project, low-ceremony persiste
 The core principles are:
 
 - Strongly typed, never None: your database shape is defined with Pydantic models; the context manager always returns a valid instance, so no null-checking required.
-- Minimal API surface: one entry point (`JsonDatabase`) with context-manager based read/modify/write behavior — no extra methods to learn.
-- Predictable lifecycle: enter context, mutate in memory, auto-persist on exit. Basic in-process locking is provided for async access, but it is not intended for multi-process or high-concurrency scenarios.
+- Minimal API surface: one entry point (`JsonDatabase`) with context-manager based read/modify/write behavior plus explicit `set(...)` persistence.
+- Predictable lifecycle: enter context, mutate in memory, call `set(...)`, then exit. Basic in-process locking is provided for async access, but it is not intended for multi-process or high-concurrency scenarios.
 - Transparent migrations: upgrade your model definition and existing data automatically migrates on load. No manual migration scripts.
 - Safe-by-default validation: corrupted or incompatible JSON raises clear errors, with optional backup snapshots before corruption is attempted.
 - Practical over perfect: optimized for local app data and prototypes where a single process owns the data, not high-concurrency or distributed workloads.
@@ -83,7 +85,7 @@ This keeps the tool simple enough to reason about while still providing structur
 
 #### Architecture & Paradigm
 
-JsonDatabase follows a typed repository-style pattern with context-managed units of work. The main class, `JsonDatabase`, serves as a factory for creating context managers that handle the lifecycle of reading, modifying, and writing JSON data. The internal class, `_JsonDatabase`, encapsulates the actual logic for file I/O, basic in-process locking, and validation. The user interacts with `JsonDatabase` to define their data model and file path, and then uses the context manager to work with the data in a safe, structured way. The design abstracts away most of the file-handling details and provides simple, in-process concurrency control, but does not aim to offer cross-process or high-concurrency guarantees, allowing users to focus on their data models and business logic. 
+JsonDatabase follows a typed repository-style pattern with context-managed units of work. The main class, `JsonDatabase`, serves as a factory for creating context managers that handle the lifecycle of reading, modifying, calling `set(...)`, and writing JSON data. The internal class, `_JsonDatabase`, encapsulates the actual logic for file I/O, basic in-process locking, and validation. The user interacts with `JsonDatabase` to define their data model and file path, and then uses the context manager to work with the data in a safe, structured way. The design abstracts away most of the file-handling details and provides simple, in-process concurrency control, but does not aim to offer cross-process or high-concurrency guarantees, allowing users to focus on their data models and business logic. 
 
 ```mermaid
 flowchart TD
@@ -94,7 +96,8 @@ flowchart TD
     D -->|"Async"| F["Read and acquire async lock via thread"]
     E --> G["Modify data"]
     F --> G
-    G --> H["Write and release async lock if held"]
+    G --> H["Call set(updated_data)"]
+    H --> I["Write and release async lock if held"]
 ```
 
 #### Migrations
@@ -222,7 +225,8 @@ def main():
         user.name = "Alice"
         user.email = "alice@example.com"
         user.is_verified = True
-        # Auto-saves on exit
+        user_db.set(user)
+        # Context exit writes the value most recently provided to set(...)
 
 if __name__ == "__main__":
     main()
