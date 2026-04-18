@@ -1,193 +1,106 @@
 # Jays Tools
 
-This package is a collection of tools that I tend to find useful in my projects. It is not meant to be a comprehensive library, but rather a collection of utilities that I find useful.
+A collection of lightweight utilities for common development tasks, designed for simplicity and type safety.
+
+## Features
+
+- **JsonDatabase**: JSON-backed database with Pydantic validation, automatic migrations, and async support
+- Strongly typed with full IDE support
+- Minimal API surface for quick adoption
+- Transparent data migrations as your models evolve
 
 ## Installation
-You can install the package via pip:
 
 ```bash
 pip install jays-tools
 ```
 
-## Tools
+## Quick Start: JsonDatabase
 
-### JsonDatabase
+A lightweight, typed JSON database perfect for single-process applications, prototypes, and embedded data stores.
 
-A lightweight JSON-backed database with Pydantic validation and type hints. Perfect for small projects, embedded data stores, or prototypes where you want structured data without the complexity of traditional databases.
-
-#### Inspiration
-
-I love tools like SQL, Redis, and other databases for live production data 
-where multiple users are interacting with the same data simultaneously. 
-However, my frustrations were the typing overhead, writing exhaustive tests 
-just to validate schemas, and the complexity that comes with it when all I 
-need is a simple way to store data in a project.
-
-SQLAlchemy is powerful but can get heavy and overwhelming fast. SQLModel is 
-a step in the right direction, but it has its rough edges — some features 
-require workarounds that feel more like hacks than solutions.
-
-The database I enjoyed most was TinyDB. It lacked typing support, but the 
-concept and API were exactly what I wanted — especially for projects like 
-Local osu! Server, where only a single user is ever interacting with the data.
-
-So I built this: a simple JSON database with the full benefits of Pydantic 
-models, type hints, and surprisingly painless migrations — all without the 
-overhead of a traditional database setup.
-
-#### Usage
+### Basic Usage
 
 ```python
 from jays_tools.json_database import JsonDatabase
 from pydantic import BaseModel
 
-class User(BaseModel):
-    id: int
-    name: str
-
 class Users(BaseModel):
     total: int = 0
-    users: list[User] = []
+    users: list[dict] = []
 
-# Create database. File is auto-created if it doesn't exist.
+# Create or load database (file auto-created if missing)
 db = JsonDatabase("users.json", Users)
 
-# Sync usage - read, mutate, then persist with set(...)
-with db as users_data:
-    users_data.users.append(User(id=1, name="Jay"))
-    users_data.users.append(User(id=2, name="John"))
-    users_data.total = len(users_data.users)
-    db.set(users_data)
-    # Context exit writes the value most recently provided to set(...)
+# Read, modify, and persist
+current = db.get_database()
+current.users.append({"id": 1, "name": "Alice"})
+current.total = len(current.users)
+db.update_database(current)
 
-# Async usage - same pattern, non-blocking I/O via thread pool
-async with db as users_data:
-    users_data.users.append(User(id=3, name="Jane"))
-    users_data.total = len(users_data.users)
-    db.set(users_data)
-    # Context exit writes the value most recently provided to set(...)
+# Access the data
+data = db.get_database()
+print(data.total)   # 1
+print(data.users)   # [{"id": 1, "name": "Alice"}]
 ```
 
-#### Text Encoding & Legacy Files
-
-JsonDatabase now exposes explicit text codec options so behavior is predictable across operating systems.
+### Async Support
 
 ```python
+import asyncio
+
+async def main():
+    db = JsonDatabase("users.json", Users)
+    
+    # Non-blocking read/write via thread pool
+    current = await db.async_get_database()
+    current.total += 1
+    await db.async_update_database(current)
+
+asyncio.run(main())
+```
+
+### Text Encoding & Legacy Files
+
+By default, JsonDatabase uses UTF-8 with strict error handling. For legacy files with different encodings:
+
+```python
+# Read old Windows files (cp1252) and auto-normalize to UTF-8
 db = JsonDatabase(
-    "users.json",
-    Users,
-    encoding="utf-8",                  # default
-    errors="strict",                   # default
-    read_fallback_encodings=(),         # default (no fallback)
-    ensure_ascii=False,                 # default
-)
-```
-
-Behavior contract:
-
-- Default mode: UTF-8 strict, no fallback. This is modern and deterministic.
-- Legacy compatibility mode: provide `read_fallback_encodings=("cp1252", "latin-1")` to read older Windows files.
-- Self-healing writes: writes always use your primary encoding (UTF-8 by default), so legacy files get normalized once rewritten.
-- Backup behavior: backups are written using the same primary encoding as writes.
-
-Legacy compatibility example:
-
-```python
-legacy_db = JsonDatabase(
     "legacy_users.json",
     Users,
-    read_fallback_encodings=("cp1252", "latin-1"),
+    # File will be rewritten as UTF-8 on next write
 )
-
-with legacy_db as users_data:
-    # If file was cp1252, it is still readable here.
-    users_data.total = len(users_data.users)
-    legacy_db.set(users_data)
-    # File is rewritten as UTF-8 by default.
 ```
 
-If decoding fails for the primary encoding and all fallbacks, JsonDatabase raises a clear error listing all attempted encodings.
+## Key Concepts
 
-#### Design Philosophy
+### Type-Safe by Default
 
-JsonDatabase is intentionally designed for single-project, low-ceremony persistence where code clarity matters more than feature depth.
-
-The core principles are:
-
-- Strongly typed, never None: your database shape is defined with Pydantic models; the context manager always returns a valid instance, so no null-checking required.
-- Minimal API surface: one entry point (`JsonDatabase`) with context-manager based read/modify/write behavior plus explicit `set(...)` persistence.
-- Predictable lifecycle: enter context, mutate in memory, call `set(...)`, then exit. Basic in-process locking is provided for async access, but it is not intended for multi-process or high-concurrency scenarios.
-- Transparent migrations: upgrade your model definition and existing data automatically migrates on load. No manual migration scripts.
-- Safe-by-default validation: corrupted or incompatible JSON raises clear errors, with optional backup snapshots before corruption is attempted.
-- Practical over perfect: optimized for local app data and prototypes where a single process owns the data, not high-concurrency or distributed workloads.
-
-This keeps the tool simple enough to reason about while still providing structure, typing, and painless model evolution.
-
-#### Architecture & Paradigm
-
-JsonDatabase follows a typed repository-style pattern with context-managed units of work. The main class, `JsonDatabase`, serves as a factory for creating context managers that handle the lifecycle of reading, modifying, calling `set(...)`, and writing JSON data. The internal class, `_JsonDatabase`, encapsulates the actual logic for file I/O, basic in-process locking, and validation. The user interacts with `JsonDatabase` to define their data model and file path, and then uses the context manager to work with the data in a safe, structured way. The design abstracts away most of the file-handling details and provides simple, in-process concurrency control, but does not aim to offer cross-process or high-concurrency guarantees, allowing users to focus on their data models and business logic. 
-
-```mermaid
-flowchart TD
-    A["JsonDatabase path model"] --> B["_JsonDatabase created"]
-    B --> C["Auto-creates file if missing"]
-    C --> D{"Context manager"}
-    D -->|"Sync"| E["Read"]
-    D -->|"Async"| F["Read and acquire async lock via thread"]
-    E --> G["Modify data"]
-    F --> G
-    G --> H["Call set(updated_data)"]
-    H --> I["Write and release async lock if held"]
-```
-
-#### Migrations
-
-Define model versions as a linear chain using `previous_model=` parameter. When you create a new version, declare the previous version and implement the `migrate_from_previous()` staticmethod to transform old data.
-
-**When to version your model:** Only create a new version class (like `UserV2`) when your code is in production and you need to ensure existing data continues to work smoothly. During development, feel free to modify your single model directly. Versioning is for supporting legacy data when you must change the schema in incompatible ways.
+Your database shape is defined with Pydantic models. Access data with full type hints and IDE autocomplete.
 
 ```python
-from typing import Any
-from jays_tools.json_database import JsonDatabase, MigratableModel
-
-class UserV1(MigratableModel):
-    name: str = ""
-    age: int = 0
-
-class UserV2(MigratableModel, previous_model=UserV1):
-    name: str = ""
-    age: int = 0
-    email: str = ""  # New field
-
-    @staticmethod
-    def migrate_from_previous(previous_data: dict[str, Any]) -> dict[str, Any]:
-        """Migrate from UserV1 to UserV2: add email field"""
-        previous_data["email"] = ""  # Default for existing records
-        return previous_data
-
-class UserV3(MigratableModel, previous_model=UserV2):
-    name: str = ""
-    age: int = 0
-    email: str = ""
-    is_active: bool = True  # New field
-
-    @staticmethod
-    def migrate_from_previous(previous_data: dict[str, Any]) -> dict[str, Any]:
-        """Migrate from UserV2 to UserV3: add is_active field"""
-        previous_data["is_active"] = True
-        return previous_data
-
-# Load V1 data as V3 — migrations apply automatically in order
-db = JsonDatabase("user.json", UserV3)
-with db as user:
-    print(user.model_version)  # Output: 3
-    print(user.email)           # Output: "" (from V2 migration)
-    print(user.is_active)       # Output: True (from V3 migration)
+db = JsonDatabase("config.json", MyConfig)
+config = db.get_database()
+config.api_key  # Full IDE support, no guessing types
 ```
 
-#### Recommended Project Structure
+### Automatic Migrations
 
-For larger projects with multiple models, organize them in a dedicated `models/` folder with one file per entity:
+Update your model, existing data migrates automatically. No manual migration scripts needed.
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md#migrations) for detailed migration examples.
+
+### Simple API
+
+Three core methods:
+- `get_database()` → Read current state (returns a copy)
+- `update_database(data)` → Write new state and persist to disk
+- `async_get_database()` / `async_update_database()` → Async versions
+
+## Recommended Project Structure
+
+For projects with multiple data models:
 
 ```
 my_project/
@@ -195,8 +108,7 @@ my_project/
 │   ├── models/
 │   │   ├── __init__.py
 │   │   ├── user.py
-│   │   ├── settings.py
-│   │   └── session.py
+│   │   └── settings.py
 │   ├── database.py
 │   └── main.py
 └── data/
@@ -221,38 +133,23 @@ class UserV2(MigratableModel, previous_model=UserV1):
 
     @staticmethod
     def migrate_from_previous(previous_data: dict[str, Any]) -> dict[str, Any]:
-        """Migrate from UserV1 to UserV2: add email field"""
         previous_data["email"] = ""
         return previous_data
 
-class UserV3(MigratableModel, previous_model=UserV2):
-    name: str = ""
-    age: int = 0
-    email: str = ""
-    is_verified: bool = False
-
-    @staticmethod
-    def migrate_from_previous(previous_data: dict[str, Any]) -> dict[str, Any]:
-        """Migrate from UserV2 to UserV3: add is_verified field"""
-        previous_data["is_verified"] = False
-        return previous_data
-
-# Use the latest version when creating databases
-CurrentUser = UserV3
+# Always export the latest version
+User = UserV2
 ```
 
 **src/database.py:**
 ```python
 from pathlib import Path
-from src.models.user import CurrentUser as User
-from src.models.settings import CurrentSettings as Settings
+from src.models.user import User
 from jays_tools.json_database import JsonDatabase
 
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 
 user_db = JsonDatabase(DATA_DIR / "user.json", User)
-settings_db = JsonDatabase(DATA_DIR / "settings.json", Settings)
 ```
 
 **src/main.py:**
@@ -260,14 +157,33 @@ settings_db = JsonDatabase(DATA_DIR / "settings.json", Settings)
 from src.database import user_db
 
 def main():
-    # Automatically loads and migrates data if needed
-    with user_db as user:
-        user.name = "Alice"
-        user.email = "alice@example.com"
-        user.is_verified = True
-        user_db.set(user)
-        # Context exit writes the value most recently provided to set(...)
-
-if __name__ == "__main__":
-    main()
+    user = user_db.get_database()
+    user.name = "Alice"
+    user.email = "alice@example.com"
+    user_db.update_database(user)
 ```
+
+## Learn More
+
+- [Architecture & Design](./ARCHITECTURE.md) — Internal structure, design paradigm, and migration details
+- [Design Philosophy](./PHILOSOPHY.md) — Inspiration and design principles behind JsonDatabase
+- [API Reference](./docs/api.md) *(coming soon)*
+
+## Testing
+
+Run the comprehensive test suite:
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest tests/ -v
+
+# With coverage
+pytest --cov=src tests/
+```
+
+## License
+
+MIT - See LICENSE file for details
