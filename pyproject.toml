@@ -13,5 +13,24 @@ dependencies = [
     "pydantic>=2.0",
 ]
 
+# Optional dependencies for development
+# Install with: pip install -e ".[dev]"
+# This lets developers run tests without installing them for end users
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",           # Testing framework
+    "pytest-cov>=4.0",       # Code coverage reports
+    "pytest-asyncio>=0.21",  # Async test support (for @pytest.mark.asyncio)
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/jays_tools"]
+
+# Pytest configuration
+# Tells pytest where to find tests and how to run them
+[tool.pytest.ini_options]
+testpaths = ["tests"]                    # Where to look for tests
+python_files = "test_*.py"              # Test file naming pattern
+python_classes = "Test*"                # Test class naming pattern (e.g., TestDatabase)
+python_functions = "test_*"             # Test function naming pattern
+addopts = "--strict-markers -v"         # Strict markers enforced, verbose output

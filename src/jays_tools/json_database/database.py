@@ -1,185 +1,117 @@
 import asyncio
-import time
 from pathlib import Path
-from types import TracebackType
+from copy import deepcopy
 from typing import Generic, Type, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
 from .file import JsonFile
+from .models import MigratableModel
 
-T = TypeVar("T", bound=BaseModel)
-
-ASYNCIO_LOCKS_AVAILABLE: dict[str, asyncio.Lock] = {}
+T = TypeVar("T", bound=MigratableModel)
 
 # Known Bugs/Features to Implement:
 # - Atomic writes to prevent data loss. See: https://stackoverflow.com/a/2333872/11761617
-# - Sync/async race, handle the case where a user uses both sync and async, which could lead to corruption.
-# - Cross process protection, if multiple processes are accessing the same file, this could lead to corruption.
+# - Cross process protection: if multiple processes access the same file, this could lead to corruption.
 #    To fix, we would need to do OS level file locking.
 
-# Dev Notes:
-# - asyncio.to_thread is used to run the synchronous method in a separate thread,
-#    this allows the event loop to remain working while the potentially blocking file I/O operation is performed.
+def model_has_defaults(model: Type[BaseModel]) -> bool:
+    try:
+        model()
+        return True
+    except ValidationError:
+        return False
 
-class _JsonDatabase(Generic[T]):
+class JsonDatabase(Generic[T]):
+    def __new__(cls, *args, **kwargs) -> "JsonDatabase[T]":
+        database_model = kwargs.get("database_model")
+
+        if database_model is None:
+            raise ValueError("database_model is required to create a JsonDatabase instance.")
+
+        if not model_has_defaults(database_model):
+            raise ValueError(
+                f"JsonDatabase requires all fields to have defaults, but "
+                f"{database_model.__name__} has required fields."
+            )
+
+        return super().__new__(cls)
+
     def __init__(
         self,
         path: str | Path,
         database_model: Type[T],
-        backup_on_validation_error: bool,
-        encoding: str,
-        errors: str,
-        read_fallback_encodings: tuple[str, ...],
-        ensure_ascii: bool,
     ):
+        # Private attrs to prevent external mutation
+        self.private_path = JsonFile(path)
+        self.private_database: T = None # type: ignore[assignment]
+        self.private_database_model: Type[T] = database_model
 
-        try:
-            database_model()
-        except ValidationError as error:
-            raise ValueError(
-                f"JsonDatabase requires all fields to have defaults, but "
-                f"{database_model.__name__} has required fields:\n{error}"
-            )
+    def get_path(self) -> Path:
+        return self.private_path.absolute()
 
-        self.path = JsonFile(path)
+    def get_database(self) -> T:
+        if self.private_database is None:
+            self.read()
 
-        self.backup_on_validation_error = backup_on_validation_error
-        self.encoding = encoding
-        self.errors = errors
-        self.read_fallback_encodings = read_fallback_encodings
-        self.ensure_ascii = ensure_ascii
-        self.database_model = database_model
-        self.database: T = self.database_model()
-        
-        self.lock_key = str(self.path.absolute())
-
-    def get_lock(self) -> asyncio.Lock:
-        lock = ASYNCIO_LOCKS_AVAILABLE.get(self.lock_key)
-
-        if lock is None:
-            lock = ASYNCIO_LOCKS_AVAILABLE[self.lock_key] = asyncio.Lock()
-
-        return lock
-
-    async def read_async(self) -> T:
-        return await asyncio.to_thread(self.read)
-
-    async def write_async(self, data: T) -> None:
-        await asyncio.to_thread(self.write, data)
+        return deepcopy(self.private_database)
     
-    def set(self, data: T) -> None:
-        if not isinstance(data, self.database_model):
-            raise TypeError(
-                f"set() expected {self.database_model.__name__}, got {type(data).__name__}"
-            )
+    def set_database(self, database: T) -> T:
+        self.private_database = deepcopy(database)
+        return deepcopy(self.private_database)
 
-        # Prevents Reference issues when a user does something to data after calling set.
-        self.database = data.model_copy(deep=True)
-
-    async def __aenter__(self) -> T:
-        lock = self.get_lock()
-        await lock.acquire()
-
-        self.database = await self.read_async()
-        return self.database.model_copy(deep=True)
-
-    async def __aexit__(
-        self,
-        exc_type: Type[BaseException] | None,
-        exc: BaseException | None,
-        tb: TracebackType | None,
-    ) -> None:
-        try:
-            await self.write_async(self.database)
-        finally:
-            lock = self.get_lock()
-            lock.release()
-
-    def write(self, data: T) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-
-        self.path.write_text(
-            data.model_dump_json(indent=4, ensure_ascii=self.ensure_ascii),
-            encoding=self.encoding,
-            errors=self.errors,
+    def write(self, database: T) -> T:
+        """Write database to file and update cache."""
+        if not self.private_path.parent.exists():
+            self.private_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        self.private_path.write_text(
+            database.model_dump_json(indent=4, ensure_ascii=False),
+            encoding="utf-8",
+            errors="strict",
         )
+        
+        self.set_database(database)
 
-    def backup(self, source_text: str | None = None) -> None:
-        current_epoch_time = int(time.time())
-
-        backup_path = self.path.with_name(f"{self.path.stem}_backup_{current_epoch_time}.json")
-
-        if source_text is None:
-            source_text = self._read_text_with_fallback()
-
-        backup_path.write_text(
-            source_text,
-            encoding=self.encoding,
-            errors=self.errors,
-        )
-
-    def _read_text_with_fallback(self) -> str:
-        attempted_encodings = [self.encoding, *self.read_fallback_encodings]
-        attempted_details: list[str] = []
-        last_decode_error: UnicodeDecodeError | None = None
-
-        # Try primary encoding first, then optional fallback encodings in order.
-        for candidate_encoding in attempted_encodings:
-            try:
-                return self.path.read_text(encoding=candidate_encoding, errors=self.errors)
-            except UnicodeDecodeError as decode_error:
-                attempted_details.append(f"{candidate_encoding} ({decode_error})")
-                last_decode_error = decode_error
-
-        attempted_list = ", ".join(attempted_encodings)
-        raise ValueError(
-            f"Failed to decode database file {self.path}. "
-            f"Attempted encodings: {attempted_list}. "
-            f"Primary errors mode: {self.errors}. "
-            f"Decode errors: {' | '.join(attempted_details)}"
-        ) from last_decode_error
+        return deepcopy(database)
 
     def read(self) -> T:
-        if not self.path.exists():
-            # new_instance prevents cases where the file is empty, but self.database isn't
-            # or file exists but self.database != the content in the file
-            # basically ensures that the file's data and self.database are always in sync at any point in time.
-            new_instance = self.database_model()
-            self.write(new_instance)
-            return new_instance
+        """Read database from file and cache it."""
+        if not self.private_path.exists():
+            return self.write(self.private_database_model())
         
-        data = self._read_text_with_fallback()
+        raw_database = self.private_path.read_text(
+            encoding="utf-8", 
+            errors="strict"
+        )
 
-        if data:
-            try:
-                return self.database_model.model_validate_json(data)
-            except ValidationError as error:
-                error_message = (
-                    f"Failed to read database file {self.path} due to validation error:\n{error}\n"
-                    "If this is for production use, consider implementing a migration strategy.\n"
-                )
+        if not raw_database:
+            return self.write(self.private_database_model())
 
-                if self.backup_on_validation_error:
-                    self.backup(source_text=data)
-                    error_message += (
-                        "\nA backup of the invalid data has been created with a timestamp in the filename. "
-                    )
+        try:
+            self.set_database(
+                self.private_database_model.model_validate_json(raw_database)
+            )
+        except ValidationError as error:
+            error_message = (
+                f"Failed to read database file {self.private_path} due to validation error:\n{error}\n"
+                "If this is for production use, consider implementing a migration strategy.\n"
+            )
+            raise ValueError(error_message)
 
-                raise ValueError(error_message)
-        else:
-            new_instance = self.database_model()
-            self.write(new_instance)
-            return new_instance
+        return deepcopy(self.private_database)
 
-    def __enter__(self) -> T:
-        self.database = self.read()
-        return self.database.model_copy(deep=True)
+    def update_database(self, updated_database: T) -> T:
+        """Update database with new data, write to file, and return a copy."""
+        self.write(updated_database)
+        return deepcopy(self.private_database)
 
-    def __exit__(
-        self,
-        exc_type: Type[BaseException] | None,
-        exc: BaseException | None,
-        tb: TracebackType | None,
-    ) -> None:
-        self.write(self.database)
+    # async versions, "just in case" situations
+
+    async def async_update_database(self, updated_database: T) -> T:
+        async with asyncio.Lock():
+            return await asyncio.to_thread(self.update_database, updated_database)
+
+    async def async_get_database(self) -> T:
+        async with asyncio.Lock():
+            return await asyncio.to_thread(self.get_database)
