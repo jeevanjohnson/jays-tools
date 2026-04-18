@@ -26,9 +26,9 @@ A lightweight JSON database perfect for application state, configuration, and si
 
 ```python
 from jays_tools.json_database import JsonDatabase
-from pydantic import BaseModel
+from jays_tools.json_database.models import MigratableModel
 
-class AppState(BaseModel):
+class AppState(MigratableModel):
     total: int = 0
     users: list[dict] = []
 
@@ -71,9 +71,9 @@ Store collections of entities as individual JSON files, automatically keyed by f
 
 ```python
 from jays_tools.json_collection import JsonCollection
-from pydantic import BaseModel
+from jays_tools.json_database.models import MigratableModel
 
-class User(BaseModel):
+class User(MigratableModel):
     name: str = ""
     email: str = ""
 
@@ -221,22 +221,6 @@ def main():
 
 - [Architecture & Design](./ARCHITECTURE.md) — Internal structure, concurrency model, and design patterns
 - [Design Philosophy](./PHILOSOPHY.md) — Inspiration and principles behind JsonDatabase and JsonCollection
-- [API Reference](./API.md) — Detailed method documentation and type signatures
-
-## Testing
-
-```bash
-# Install dev dependencies
-pip install -e ".[dev]"
-
-# Run all 91 tests
-pytest tests/ -v
-
-# Run with coverage
-pytest --cov=src tests/
-```
-
-91 tests total: 39 for JsonDatabase, 52 for JsonCollection.
 
 ## License
 
