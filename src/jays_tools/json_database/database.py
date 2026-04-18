@@ -41,22 +41,25 @@ class JsonDatabase(Generic[T]):
         self,
         path: str | Path,
         database_model: Type[T],
-    ):
+    ) -> None:
+        """Initialize database with path and model."""
         # Private attrs to prevent external mutation
         self.private_path = JsonFile(path)
-        self.private_database: T = None # type: ignore[assignment]
+        self.private_database: T = None  # type: ignore[assignment]
         self.private_database_model: Type[T] = database_model
 
     def get_path(self) -> Path:
         return self.private_path.absolute()
 
     def get_database(self) -> T:
+        """Get a copy of the database from cache, or read from disk if needed."""
         if self.private_database is None:
             self.read()
 
         return deepcopy(self.private_database)
-    
+
     def set_database(self, database: T) -> T:
+        """Set and cache the database."""
         self.private_database = deepcopy(database)
         return deepcopy(self.private_database)
 
@@ -64,13 +67,13 @@ class JsonDatabase(Generic[T]):
         """Write database to file and update cache."""
         if not self.private_path.parent.exists():
             self.private_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         self.private_path.write_text(
             database.model_dump_json(indent=4, ensure_ascii=False),
             encoding="utf-8",
             errors="strict",
         )
-        
+
         self.set_database(database)
 
         return deepcopy(database)
@@ -79,10 +82,10 @@ class JsonDatabase(Generic[T]):
         """Read database from file and cache it."""
         if not self.private_path.exists():
             return self.write(self.private_database_model())
-        
+
         raw_database = self.private_path.read_text(
-            encoding="utf-8", 
-            errors="strict"
+            encoding="utf-8",
+            errors="strict",
         )
 
         if not raw_database:
@@ -106,12 +109,14 @@ class JsonDatabase(Generic[T]):
         self.write(updated_database)
         return deepcopy(self.private_database)
 
-    # async versions, "just in case" situations
+    # Async versions, "just in case" situations
 
     async def async_update_database(self, updated_database: T) -> T:
+        """Async update with thread-pool execution and locking."""
         async with asyncio.Lock():
             return await asyncio.to_thread(self.update_database, updated_database)
 
     async def async_get_database(self) -> T:
+        """Async read with thread-pool execution and locking."""
         async with asyncio.Lock():
             return await asyncio.to_thread(self.get_database)
