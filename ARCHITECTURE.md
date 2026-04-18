@@ -1,22 +1,38 @@
-# JsonDatabase Architecture & Design
+# Architecture & Design
 
-This document explains the internal design of JsonDatabase, how it works, and how to extend it.
+This document explains the internal design of JsonDatabase and JsonCollection, how they work, and how to extend them.
+
+## Components Overview
+
+Jays Tools provides two complementary components:
+
+### JsonDatabase
+
+Single-entity storage for application state, configuration, or unified data structures. All data is stored in one JSON file.
+
+**Use when**: You have one main data structure (settings, app state, config) that you read/write as a unit.
+
+### JsonCollection
+
+Directory-based multi-entity storage where each entity is stored as an individual JSON file, keyed by filename.
+
+**Use when**: You manage multiple related objects (users, sessions, documents) and need to perform CRUD operations on individual items.
 
 ## Design Paradigm
 
-JsonDatabase follows a **typed repository pattern** with managed read-modify-write cycles.
+Both components follow a **typed repository pattern** with managed read-modify-write cycles.
 
-### Core Concepts
+### Core Principles
 
-**Repository Pattern**: JsonDatabase acts as a typed repository for your data, abstracting away file I/O and validation concerns.
+**Repository Pattern**: Both act as strongly-typed repositories, abstracting away file I/O and validation concerns.
 
 **Type Safety**: All data flows through Pydantic models, ensuring compile-time and runtime validation. You never work with unstructured dictionaries.
 
-**Single-Process Focus**: Designed for applications where one process owns the data. Basic in-process locking prevents concurrent access issues within a single process, but is not intended for multi-process scenarios or high-concurrency environments.
+**Single-Process Focus**: Designed for applications where one process owns the data. Thread-safe in-process locking prevents concurrent access issues, but not intended for multi-process scenarios.
 
-**Immutable-by-Default**: Methods return deep copies of the database, preventing accidental mutations of internal state.
+**Immutable-by-Default**: Methods return deep copies, preventing accidental mutations of internal state.
 
-## Internal Architecture
+## JsonDatabase Architecture
 
 ### Class Hierarchy
 
@@ -25,50 +41,132 @@ JsonDatabase (Generic[T])
 ├── Factory function: creates _JsonDatabase instances
 │
 _JsonDatabase (Generic[T])
-├── Handles file I/O
+├── Handles file I/O with atomic writes
 ├── Manages in-memory cache
 ├── Coordinates validation and migrations
-└── Provides sync and async methods
+└── Provides sync and async methods with threading.RLock()
 ```
 
-### Data Flow
+### Data Flow: Read Operation
 
 ```mermaid
 flowchart TD
     A["User calls get_database()"]
-    B["Cache empty?"]
-    C["Read from file"]
-    D["Validate with Pydantic"]
-    E["Run migrations if needed"]
-    F["Cache result"]
-    G["Return deep copy"]
+    B["Acquire RLock"]
+    C["Cache hit?"]
+    D["Read from file"]
+    E["Validate with Pydantic"]
+    F["Run migrations if needed"]
+    G["Update cache"]
+    H["Release RLock"]
+    I["Return deep copy"]
     
     A --> B
-    B -->|"Yes"| C
-    B -->|"No"| G
+    B --> C
+    C -->|"Yes, return cached"| H
+    C -->|"No, read from disk"| D
+    D --> E
+    E --> F
+    F --> G
+    G --> H
+    H --> I
+```
+
+### Write Path: Atomic Writes
+
+```mermaid
+flowchart TD
+    A["User calls update_database()"]
+    B["Acquire RLock"]
+    C["Validate data with Pydantic"]
+    D["Create parent directories"]
+    E["Serialize to JSON"]
+    F["Write to temporary file"]
+    G["Delete old file"]
+    H["Atomically rename temp to target"]
+    I["Update cache"]
+    J["Release RLock"]
+    K["Return copy"]
+    
+    A --> B
+    B --> C
     C --> D
     D --> E
     E --> F
     F --> G
+    G --> H
+    H --> I
+    I --> J
+    J --> K
 ```
 
-### Read Path
+### Thread Safety Implementation
 
-1. **Check Cache**: If `private_database` is not `None`, skip to file read
-2. **Read File**: Load JSON from disk with UTF-8 (or fallback encodings)
-3. **Parse & Validate**: Pydantic validates and parses JSON
-4. **Apply Migrations**: If data is older version, apply migration chain
-5. **Cache**: Store parsed result in `private_database`
-6. **Return Copy**: Return a deep copy (prevents external mutations)
+JsonDatabase uses `threading.RLock()` (reentrant lock) to ensure thread-safe operations:
 
-### Write Path
+- **RLock over Lock**: Reentrant design allows the same thread to acquire the lock multiple times (needed because `read()` calls `write()` internally)
+- **Atomic file writes**: Temp file → atomic rename prevents corruption if processes crash mid-write
+- **Read-modify-write safety**: Lock ensures only one operation at a time per database instance
+- **Per-instance locking**: Each JsonDatabase instance has its own lock (no global locks)
 
-1. **Validate Input**: Ensure data is correct type
-2. **Create Parent Dirs**: Ensure directory structure exists
-3. **Serialize**: Convert Pydantic model to JSON
-4. **Write Atomically**: Write to file (future: atomic writes with temp file)
-5. **Update Cache**: Update `private_database` with written value
-6. **Return Copy**: Return a deep copy
+**Important limitation**: Locks are per-process only. Multiple processes accessing the same file will not be synchronized and may corrupt data. Use proper databases (PostgreSQL, SQLite) for multi-process access.
+
+## JsonCollection Architecture
+
+### File Organization
+
+```
+collection_directory/
+├── entity_key_1.json
+├── entity_key_2.json
+├── entity_key_3.json
+└── another_entity.json
+```
+
+Each entity is stored as a separate JSON file, named `{key}.json`.
+
+### Internal Design
+
+```
+JsonCollection (Generic[T])
+├── Factory function: creates _JsonCollection instances
+│
+_JsonCollection (Generic[T])
+├── Manages collection directory
+├── Returns JsonDatabase instances for individual entities
+├── Coordinates async operations with asyncio.Lock()
+└── Provides collection-level operations:
+    ├── CRUD: create, get, update, delete
+    ├── Queries: exists, list_keys
+    ├── Bulk: get_all, update_all, clear
+    └── Async variants for all operations
+```
+
+### Key Method: `get(key)`
+
+The `get(key)` method returns a **JsonDatabase instance** for a specific entity:
+
+```python
+collection = JsonCollection("data/users", model=User)
+
+# Returns a JsonDatabase[User] for this specific entity
+user_db = collection.get("alice_id")
+
+# Now you can use JsonDatabase methods
+alice = user_db.get_database()
+alice.email = "newemail@example.com"
+user_db.update_database(alice)
+```
+
+This design allows JsonCollection to leverage all of JsonDatabase's features (validation, migrations, atomic writes) per entity.
+
+### Concurrency in JsonCollection
+
+JsonCollection uses `asyncio.Lock()` for async operations:
+
+- **Lock scope**: Per collection instance, protects async operations
+- **Serialization**: Concurrent async calls are queued and executed sequentially
+- **Per-entity thread safety**: Each entity (via JsonDatabase) gets its own RLock for file I/O
 
 ## Migrations
 
@@ -99,7 +197,7 @@ class UserV2(MigratableModel, previous_model=UserV1):
 
     @staticmethod
     def migrate_from_previous(previous_data: dict[str, Any]) -> dict[str, Any]:
-        previous_data["email"] = ""  # Default for existing records
+        previous_data["email"] = ""
         return previous_data
 
 # Add verification status
@@ -115,8 +213,8 @@ class UserV3(MigratableModel, previous_model=UserV2):
         return previous_data
 ```
 
-When you load `UserV3` data that was originally `UserV1`:
-- The version chain is detected: V1 → V2 → V3
+When you load `UserV3` data originally in `UserV1` format:
+- Version chain is detected: V1 → V2 → V3
 - V1→V2 migration runs (add email)
 - V2→V3 migration runs (add is_verified)
 - Result is valid V3 data
@@ -124,21 +222,14 @@ When you load `UserV3` data that was originally `UserV1`:
 ### When to Version
 
 **Version your model when**:
-- Code is in production and has existing data
-- You need to change the schema in incompatible ways
-- You want existing data to continue working automatically
+- Code is in production with existing data
+- You need incompatible schema changes
+- You want automatic data migration
 
 **Don't version during development**:
 - Freely modify your single model
-- Versioning adds complexity you don't need yet
-- Once you have production data, create versions
-
-### Migration Best Practices
-
-1. **Provide Sensible Defaults**: New fields should have defaults that make sense for existing records
-2. **Never Lose Data**: Preserve existing fields, only add new ones
-3. **Test Migrations**: Create test data in the old format, verify migrations work
-4. **Document Changes**: Explain why the schema changed in migration docstrings
+- Versioning adds complexity not yet needed
+- Create versions only when you have production data
 
 ## Async Implementation
 
@@ -259,20 +350,30 @@ This is crucial for working with nested structures (lists, dicts) where shallow 
 
 ### Design Tradeoffs
 
-| Aspect | JsonDatabase | Traditional DB |
+| Aspect | JsonDatabase/JsonCollection | Traditional DB |
 |--------|---|---|
-| **Setup** | None, just a file | Complex setup required |
+| **Setup** | None, just files | Complex setup required |
 | **Type Safety** | Full (Pydantic) | Partial or none |
 | **Performance** | Fast for small data | Optimized for scale |
 | **Scaling** | Doesn't scale | Scales well |
-| **Migrations** | Automatic | Manual scripts |
+| **Migrations** | Automatic (built-in) | Manual scripts |
 | **Ideal Use Case** | Local app data, prototypes | Production services |
 
-## Future Improvements
+## Implemented Features
 
-Potential enhancements under consideration:
+✅ **Atomic writes** — Temp file + atomic rename prevents corruption during concurrent writes
+✅ **Thread-safe operations** — RLock serializes file I/O per instance
+✅ **Automatic migrations** — Schema versioning with linear migration chains
+✅ **Async support** — Non-blocking I/O via thread pool
+✅ **Deep copy semantics** — Prevents accidental cache mutations
+✅ **In-memory caching** — Fast reads for unchanged data
+✅ **Comprehensive testing** — 91 tests covering all operations and edge cases
 
-- **Atomic writes**: Write to temp file then rename (prevent corruption)
-- **Schema versioning**: Automatic schema migration on startup
-- **Compression**: Optional gzip compression for large databases
+## Future Enhancements
+
+Potential improvements under consideration:
+
 - **Encryption**: Optional AES encryption at rest
+- **Compression**: Optional gzip for large collections
+- **Schema validation hooks**: Custom validation beyond Pydantic
+- **Backup/restore utilities**: Built-in snapshot and recovery tools

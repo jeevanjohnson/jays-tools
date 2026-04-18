@@ -1,6 +1,6 @@
-# JsonDatabase Philosophy
+# Design Philosophy
 
-Why does JsonDatabase exist, and what problems does it solve?
+Why do JsonDatabase and JsonCollection exist, and what problems do they solve?
 
 ## The Problem
 
@@ -10,13 +10,13 @@ When I needed to persist application data, I faced a spectrum of options:
 
 **Heavy solutions**: SQLAlchemy, Django ORM, PostgreSQL
 - Powerful but overkill for local data
-- Setup complexity for simple use cases
+- Complex setup for simple use cases
 - Require spinning up servers
 - Too many features you don't need
 
 **Lightweight solutions**: TinyDB, shelve, pickle
 - Simple and lightweight
-- But completely untyped
+- Completely untyped
 - No validation, no IDE support
 - Migrations are manual nightmares
 
@@ -24,33 +24,36 @@ When I needed to persist application data, I faced a spectrum of options:
 - Better typing than raw SQL
 - Still require database servers
 - Configuration overhead
-- Sometimes feel hacky with workarounds
+- Workarounds for simple cases
 
-### My Frustrations
+### Core Frustrations
 
-1. **Typing overhead**: Many solutions either have no typing or require verbose configurations
+1. **Type system gap**: Solutions either have no typing or require verbose configurations
 2. **Schema validation**: Writing exhaustive tests just to validate schema changes
-3. **Migration burden**: No automatic migrations; every schema change is manual
-4. **Single-process indifference**: Most databases assume multiple concurrent users, but I just need local app data
+3. **Migration burden**: Every schema change requires manual migration scripts
+4. **Single-entity vs. collections**: Most tools assume one data structure, not collections of items
+5. **Over-engineering**: Most solutions designed for servers, but I just need local app data
 
 ## The Inspiration
 
-The tool that inspired JsonDatabase most was **TinyDB**.
+The tool that inspired jays-tools most was **TinyDB**.
 
 ### What I Loved About TinyDB
 
-- Dead simple API: insert, update, query
-- Perfect for single-user, local data
+- Dead simple API: read, write, query
+- Perfect for single-user local data
 - No server setup needed
 - File-based, easily tracked in git
 - Great documentation
+- Lightweight and understandable
 
 ### What I Wanted to Add
 
-- **Full type support** with IDE autocomplete
+- **Full type support** with IDE autocomplete and type checking
 - **Pydantic validation** for free schema checking
 - **Automatic migrations** when schema changes
-- **Async support** without event loop blocking
+- **Collections support** for managing multiple entities
+- **Async operations** without blocking event loops
 - **Transparency** — understands what the tool does under the hood
 
 ## Design Principles
@@ -58,38 +61,56 @@ The tool that inspired JsonDatabase most was **TinyDB**.
 ### 1. Strongly Typed, Never None
 
 ```python
-# With JsonDatabase
-db = JsonDatabase("users.json", Users)
-users = db.get_database()
-users.total  # IDE knows this is an int, no guessing
+# With jays-tools
+db = JsonDatabase("app.json", AppState)
+state = db.get_database()
+state.config.debug  # IDE knows the type, no guessing
 ```
 
 Pydantic validates every read and write. You never wonder what fields exist or what their types are.
 
-### 2. Minimal API Surface
+### 2. Two Components, One Vision
 
-Three core operations:
+**JsonDatabase** for single entities:
+- App configuration and state
+- Settings and preferences
+- Unified data structures
+
+**JsonCollection** for entity collections:
+- User profiles and documents
+- Session management
+- Any collection of similar items
+
+Both use the same validation, migration, and async patterns. Pick the right tool for your data structure.
+
+### 3. Minimal API Surface
+
+**JsonDatabase operations**:
 - `get_database()` — Read current state
 - `update_database(data)` — Write and persist
-- `async_*` versions for async contexts
 
-No query language to learn, no complex ORM syntax. Just get your data and work with it.
+**JsonCollection operations**:
+- `get(key)` / `update(key, data)` / `delete(key)` — CRUD
+- `list_keys()` / `get_all()` — Queries
+- `async_*` variants for all operations
 
-### 3. Predictable Lifecycle
+No query language to learn, no complex ORM syntax. Just work with your data.
+
+### 4. Predictable Lifecycle
 
 ```python
 # Simple, understandable flow:
-current = db.get_database()      # Read from cache/disk
-current.users.append(new_user)   # Mutate in memory
-db.update_database(current)      # Persist changes
+current = db.get_database()        # Read from cache/disk
+current.config.setting = "value"   # Mutate in memory
+db.update_database(current)        # Persist changes
 # Done. No hidden side effects.
 ```
 
 Easy to reason about, easy to debug, easy to test.
 
-### 4. Transparent Migrations
+### 5. Transparent Migrations
 
-Schema changes should be painless:
+Schema changes should be seamless:
 
 ```python
 # V1: Basic user
@@ -111,92 +132,167 @@ class UserV2(MigratableModel, previous_model=UserV1):
 
 No migration scripts, no downtime, no manual work.
 
-### 5. Safe-by-Default Validation
+### 6. Thread-Safe by Design
 
-Corrupted or incompatible JSON fails loudly with clear error messages:
+Both components use reentrant locks and atomic file writes:
+
+- In-process operations are serialized and safe
+- File corruption is prevented via temp-file-then-rename pattern
+- Async operations are properly coordinated with locks
+- Honest about limitations (no multi-process support)
+
+### 7. Safe-by-Default Validation
+
+Corrupted or incompatible JSON fails loudly with clear errors:
 
 ```python
 # If JSON doesn't match your model, you know immediately:
-ValueError: Failed to read database file users.json due to validation error:
-- name: field required
-- email: value is not a valid string
+ValueError: Failed to read database file app.json due to validation error:
+- config: field required
+- version: value is not a valid integer
 ```
 
 Safe defaults prevent silent data corruption.
 
-### 6. Practical Over Perfect
+### 8. Practical Over Perfect
 
-JsonDatabase is **not** trying to be:
+jays-tools is **not** trying to be:
 - A distributed database
 - A high-performance data warehouse
 - A replacement for production databases
-- Suitable for multi-process access
+- Suitable for multi-process concurrency
 
-JsonDatabase **is** perfect for:
-- Local application data
-- Configuration stores
-- Single-user prototypes
+jays-tools **is** perfect for:
+- Local application data and configuration
+- Prototypes and simple projects
 - Testing and development
-- Embedded data in desktop apps
+- Embedded data in standalone applications
+- Git-friendly persistent storage
 
 **Honest about limitations** beats pretending to do everything.
 
-## When to Use JsonDatabase
+## When to Use jays-tools
 
 ### Perfect For
 
 ✅ **Local app data**: Configuration, user preferences, session data  
-✅ **Prototypes**: Quick projects where speed matters more than scale  
+✅ **Prototypes**: Quick projects where speed matters  
 ✅ **Testing**: Temporary data stores in test suites  
-✅ **Embedded storage**: Desktop apps that need persistence  
-✅ **Git-friendly data**: Configuration that goes in version control  
+✅ **Embedded storage**: Desktop apps needing persistence  
+✅ **Git-friendly data**: Configuration in version control  
 ✅ **Learning**: Simple enough to understand completely  
 
 ### Not a Good Fit
 
-❌ **Production services**: Multiple users, high concurrency → use PostgreSQL  
+❌ **Production services**: Multiple users, high concurrency → use PostgreSQL/MongoDB
 ❌ **Big data**: Gigabytes of data → use data warehouses  
-❌ **Real-time collab**: Multiple writers → use proper databases  
-❌ **Mission-critical**: Need ACID guarantees → use PostgreSQL, MySQL  
-
-## Comparison to Alternatives
+❌ **Real-time collaboration**: Multiple writers → use proper databases  
+❌ **Mission-critical systems**: Need ACID guarantees → use PostgreSQL/MySQL
+## Comparisons to Alternatives
 
 ### vs. TinyDB
 
-| Aspect | JsonDatabase | TinyDB |
+| Aspect | jays-tools | TinyDB |
 |--------|---|---|
 | **Typing** | Full (Pydantic) | None |
 | **Validation** | Automatic | Manual |
 | **Migrations** | Automatic | Manual |
-| **Query Language** | N/A (data is Python objects) | Custom query language |
+| **Collections** | Built-in support | Manual querying |
+| **Async** | Full support | Limited |
 | **Learning Curve** | Very low | Very low |
 
-JsonDatabase is "TinyDB with modern Python typing and automatic migrations."
+**Summary**: "TinyDB with modern Python typing, automatic migrations, and collections support."
 
 ### vs. SQLAlchemy
 
-| Aspect | JsonDatabase | SQLAlchemy |
+| Aspect | jays-tools | SQLAlchemy |
 |--------|---|---|
-| **Typing** | Full | Partial |
-| **Setup** | None | Database setup required |
-| **Transactions** | N/A | Full support |
+| **Typing** | Full (Pydantic) | Partial/Complex |
+| **Setup** | None required | Database setup required |
+| **Query Language** | N/A (Python objects) | SQL via ORM |
+| **Transactions** | N/A (single-process) | Full ACID support |
 | **Scaling** | Doesn't scale | Scales well |
 | **Learning Curve** | Very low | Steep |
 
-SQLAlchemy is "for when you need a real database." JsonDatabase is "for when you don't."
+**Summary**: SQLAlchemy is "for when you need a real database." jays-tools is "for when you don't."
 
 ### vs. SQLModel
 
-| Aspect | JsonDatabase | SQLModel |
+| Aspect | jays-tools | SQLModel |
 |--------|---|---|
-| **Typing** | Simple (uses Pydantic) | Complex (hybrid Pydantic/SQL) |
+| **Typing** | Simple (Pydantic) | Complex (Pydantic + SQL) |
 | **Setup** | None | Database setup required |
-| **Maturity** | Focused | Broad |
-| **Learning Curve** | Low | Medium |
+| **Purpose** | Local file storage | Server databases |
+| **Learning Curve** | Low | Medium-High |
 
-SQLModel tries to do both; JsonDatabase does one thing well.
+**Summary**: SQLModel tries to do both SQL and ORM; jays-tools does one thing well.
+
+### vs. MongoDB/Firebase
+
+| Aspect | jays-tools | MongoDB/Firebase |
+|--------|---|---|
+| **Setup** | None | Cloud/server setup |
+| **Typing** | Full | Partial |
+| **Cost** | Free | Pay-per-use |
+| **Privacy** | Local files | Cloud-hosted |
+| **Scaling** | Doesn't scale | Scales indefinitely |
+
+**Summary**: Cloud databases are great for collaborative multi-user apps. jays-tools is for local single-process data.
 
 ## Design Decisions Explained
+
+### Why file-based and not in-memory?
+
+**Pros of file-based**:
+- Data persists across application restarts
+- Easy to backup, version control, debug
+- No database server to manage
+- Works offline
+
+**Cons of file-based**:
+- Slower than in-memory
+- Not suitable for high-frequency operations
+- Doesn't support network access
+
+**Decision**: File-based is the right choice for local application data and prototypes.
+
+### Why JSON and not binary?
+
+**Pros of JSON**:
+- Human-readable
+- Easy to debug and inspect
+- Version control friendly
+- Ecosystem of tools
+- Language-agnostic
+
+**Cons of JSON**:
+- Larger file size than binary
+- Slower to parse than binary
+
+**Decision**: Readability and debuggability matter more than size for local app data.
+
+### Why Pydantic and not dataclasses?
+
+**Pros of Pydantic**:
+- Built-in validation
+- Serialization/deserialization
+- Clear error messages
+- Strict types by default
+
+**Cons of Pydantic**:
+- Adds a dependency
+- Slightly slower than dataclasses
+
+**Decision**: Validation and clear errors are critical for data persistence.
+
+### Why separate JsonDatabase and JsonCollection?
+
+Different data patterns need different components:
+
+- **JsonDatabase**: For single, unified data structures (app state, config)
+- **JsonCollection**: For managing collections of similar items (users, documents)
+
+Both share the same underlying principles but expose different APIs suited to their use cases.
 
 ### Why JSON, Not YAML/TOML/MessagePack?
 

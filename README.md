@@ -1,13 +1,16 @@
 # Jays Tools
 
-A collection of lightweight utilities for common development tasks, designed for simplicity and type safety.
+A collection of lightweight utilities for JSON-backed data persistence with full type safety, automatic migrations, and async support.
 
 ## Features
 
-- **JsonDatabase**: JSON-backed database with Pydantic validation, automatic migrations, and async support
-- Strongly typed with full IDE support
-- Minimal API surface for quick adoption
-- Transparent data migrations as your models evolve
+- **JsonDatabase**: Strongly-typed JSON database for single entities with Pydantic validation and automatic migrations
+- **JsonCollection**: Directory-based entity collections for managing multiple related objects (one file per entity)
+- Full type safety with IDE autocomplete and compile-time checking
+- Transparent schema migrations as your models evolve
+- Thread-safe operations with automatic concurrency handling
+- Async support for non-blocking I/O
+- Minimal, intuitive API
 
 ## Installation
 
@@ -17,7 +20,7 @@ pip install jays-tools
 
 ## Quick Start: JsonDatabase
 
-A lightweight, typed JSON database perfect for single-process applications, prototypes, and embedded data stores.
+A lightweight JSON database perfect for application state, configuration, and single-entity storage.
 
 ### Basic Usage
 
@@ -25,20 +28,20 @@ A lightweight, typed JSON database perfect for single-process applications, prot
 from jays_tools.json_database import JsonDatabase
 from pydantic import BaseModel
 
-class Users(BaseModel):
+class AppState(BaseModel):
     total: int = 0
     users: list[dict] = []
 
-# Create or load database (file auto-created if missing)
-db = JsonDatabase("users.json", Users)
+# Create or load database (auto-created if missing)
+db = JsonDatabase("app_state.json", AppState)
 
 # Read, modify, and persist
-current = db.get_database()
-current.users.append({"id": 1, "name": "Alice"})
-current.total = len(current.users)
-db.update_database(current)
+state = db.get_database()
+state.users.append({"id": 1, "name": "Alice"})
+state.total = len(state.users)
+db.update_database(state)
 
-# Access the data
+# Verify persistence
 data = db.get_database()
 print(data.total)   # 1
 print(data.users)   # [{"id": 1, "name": "Alice"}]
@@ -50,57 +53,98 @@ print(data.users)   # [{"id": 1, "name": "Alice"}]
 import asyncio
 
 async def main():
-    db = JsonDatabase("users.json", Users)
+    db = JsonDatabase("app_state.json", AppState)
     
     # Non-blocking read/write via thread pool
-    current = await db.async_get_database()
-    current.total += 1
-    await db.async_update_database(current)
+    state = await db.async_get_database()
+    state.total += 1
+    await db.async_update_database(state)
 
 asyncio.run(main())
 ```
 
-### Text Encoding & Legacy Files
+## Quick Start: JsonCollection
 
-By default, JsonDatabase uses UTF-8 with strict error handling. For legacy files with different encodings:
+Store collections of entities as individual JSON files, automatically keyed by filename.
+
+### Basic Usage
 
 ```python
-# Read old Windows files (cp1252) and auto-normalize to UTF-8
-db = JsonDatabase(
-    "legacy_users.json",
-    Users,
-    # File will be rewritten as UTF-8 on next write
-)
+from jays_tools.json_collection import JsonCollection
+from pydantic import BaseModel
+
+class User(BaseModel):
+    name: str = ""
+    email: str = ""
+
+# Create or load collection
+collection = JsonCollection("data/users", model=User)
+
+# Create/update entities
+user_data = User(name="Alice", email="alice@example.com")
+collection.update("alice_id", user_data)
+
+# List all keys
+keys = collection.list_keys()  # ["alice_id"]
+
+# Retrieve entities
+user = collection.get("alice_id").get_database()
+print(user.name)  # "Alice"
+
+# Delete entities
+collection.delete("alice_id")
+```
+
+### Async Collection Operations
+
+```python
+async def manage_users():
+    collection = JsonCollection("data/users", model=User)
+    
+    # Async operations with built-in locking
+    await collection.async_update("alice_id", user_data)
+    all_users = await collection.async_get_all()
+    await collection.async_delete("alice_id")
+
+asyncio.run(manage_users())
 ```
 
 ## Key Concepts
 
-### Type-Safe by Default
+### Type Safety
 
-Your database shape is defined with Pydantic models. Access data with full type hints and IDE autocomplete.
+All data is validated with Pydantic models, providing full IDE support and compile-time type checking.
 
 ```python
 db = JsonDatabase("config.json", MyConfig)
 config = db.get_database()
-config.api_key  # Full IDE support, no guessing types
+config.api_key  # IDE autocomplete, full type information
 ```
 
 ### Automatic Migrations
 
-Update your model, existing data migrates automatically. No manual migration scripts needed.
+Update your model schema without manual migration scripts. Old data automatically migrates to new versions.
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md#migrations) for detailed migration examples.
+See [ARCHITECTURE.md](./ARCHITECTURE.md#migrations) for detailed migration patterns and examples.
 
-### Simple API
+### Simple, Predictable API
 
-Three core methods:
-- `get_database()` → Read current state (returns a copy)
-- `update_database(data)` → Write new state and persist to disk
+**JsonDatabase** (single entity):
+- `get_database()` → Read current state
+- `update_database(data)` → Write and persist
 - `async_get_database()` / `async_update_database()` → Async versions
 
-## Recommended Project Structure
+**JsonCollection** (entity collections):
+- `get(key)` → Retrieve entity by key (returns JsonDatabase instance)
+- `update(key, data)` → Create or update entity
+- `delete(key)` → Remove entity
+- `list_keys()` → Get all entity keys
+- `get_all()` / `update_all()` → Bulk operations
+- `async_*` variants for all operations
 
-For projects with multiple data models:
+## Project Structure
+
+For projects using multiple data models and collections:
 
 ```
 my_project/
@@ -109,15 +153,20 @@ my_project/
 │   │   ├── __init__.py
 │   │   ├── user.py
 │   │   └── settings.py
-│   ├── database.py
 │   └── main.py
 └── data/
-    ├── user.json
-    ├── settings.json
-    └── session.json
+    ├── app_settings.json          # JsonDatabase
+    ├── users/                     # JsonCollection
+    │   ├── user_1.json
+    │   ├── user_2.json
+    │   └── user_3.json
+    └── sessions/                  # JsonCollection
+        ├── session_abc.json
+        └── session_def.json
 ```
 
-**models/user.py:**
+**Example: models/user.py**
+
 ```python
 from typing import Any
 from jays_tools.json_database.models import MigratableModel
@@ -136,53 +185,58 @@ class UserV2(MigratableModel, previous_model=UserV1):
         previous_data["email"] = ""
         return previous_data
 
-# Always export the latest version
+# Export latest version
 User = UserV2
 ```
 
-**src/database.py:**
+**Example: src/main.py**
+
 ```python
 from pathlib import Path
-from src.models.user import User
+from jays_tools.json_collection import JsonCollection
 from jays_tools.json_database import JsonDatabase
+from src.models.user import User
 
+# Setup directories
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 
-user_db = JsonDatabase(DATA_DIR / "user.json", User)
-```
+# Single database for app settings
+settings_db = JsonDatabase(DATA_DIR / "app_settings.json", AppSettings)
 
-**src/main.py:**
-```python
-from src.database import user_db
+# Collection for managing users
+users_collection = JsonCollection(DATA_DIR / "users", model=User)
 
 def main():
-    user = user_db.get_database()
-    user.name = "Alice"
-    user.email = "alice@example.com"
-    user_db.update_database(user)
+    # Work with collection
+    user = User(name="Alice", email="alice@example.com")
+    users_collection.update("user_alice", user)
+    
+    # List all users
+    all_keys = users_collection.list_keys()
+    print(f"Total users: {len(all_keys)}")
 ```
 
-## Learn More
+## Learning Resources
 
-- [Architecture & Design](./ARCHITECTURE.md) — Internal structure, design paradigm, and migration details
-- [Design Philosophy](./PHILOSOPHY.md) — Inspiration and design principles behind JsonDatabase
-- [API Reference](./docs/api.md) *(coming soon)*
+- [Architecture & Design](./ARCHITECTURE.md) — Internal structure, concurrency model, and design patterns
+- [Design Philosophy](./PHILOSOPHY.md) — Inspiration and principles behind JsonDatabase and JsonCollection
+- [API Reference](./API.md) — Detailed method documentation and type signatures
 
 ## Testing
-
-Run the comprehensive test suite:
 
 ```bash
 # Install dev dependencies
 pip install -e ".[dev]"
 
-# Run tests
+# Run all 91 tests
 pytest tests/ -v
 
-# With coverage
+# Run with coverage
 pytest --cov=src tests/
 ```
+
+91 tests total: 39 for JsonDatabase, 52 for JsonCollection.
 
 ## License
 

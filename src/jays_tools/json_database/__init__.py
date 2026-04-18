@@ -8,7 +8,7 @@ from .models import MigratableModel
 #   If the user tries to import outside of __all__, they will get type errors in their IDE, which can help prevent accidental misuse of the module.
 #   Unsure if they'll get any errors other then that. 
 
-__all__ = [ 
-    "JsonDatabase", 
-    "MigratableModel"
+__all__ = [
+    "JsonDatabase",
+    "MigratableModel",
 ]

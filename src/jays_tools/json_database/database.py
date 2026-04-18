@@ -1,4 +1,6 @@
 import asyncio
+import tempfile
+import threading
 from pathlib import Path
 from copy import deepcopy
 from typing import Generic, Type, TypeVar
@@ -10,10 +12,9 @@ from .models import MigratableModel
 
 T = TypeVar("T", bound=MigratableModel)
 
-# Known Bugs/Features to Implement:
-# - Atomic writes to prevent data loss. See: https://stackoverflow.com/a/2333872/11761617
+# Known Limitations:
 # - Cross process protection: if multiple processes access the same file, this could lead to corruption.
-#    To fix, we would need to do OS level file locking.
+#    Single-process only by design. For multi-process use, use a proper database (PostgreSQL, SQLite, etc).
 
 def model_has_defaults(model: Type[BaseModel]) -> bool:
     try:
@@ -47,6 +48,9 @@ class JsonDatabase(Generic[T]):
         self.private_path = JsonFile(path)
         self.private_database: T = None  # type: ignore[assignment]
         self.private_database_model: Type[T] = database_model
+        # Reentrant lock for serializing file I/O operations
+        # (read() calls write(), so we need RLock not Lock)
+        self.private_lock = threading.RLock()
 
     def get_path(self) -> Path:
         return self.private_path.absolute()
@@ -64,45 +68,62 @@ class JsonDatabase(Generic[T]):
         return deepcopy(self.private_database)
 
     def write(self, database: T) -> T:
-        """Write database to file and update cache."""
-        if not self.private_path.parent.exists():
-            self.private_path.parent.mkdir(parents=True, exist_ok=True)
+        """Write database to file atomically and update cache."""
+        with self.private_lock:
+            if not self.private_path.parent.exists():
+                self.private_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self.private_path.write_text(
-            database.model_dump_json(indent=4, ensure_ascii=False),
-            encoding="utf-8",
-            errors="strict",
-        )
+            json_content = database.model_dump_json(indent=4, ensure_ascii=False)
 
-        self.set_database(database)
+            # Write atomically: write to temp file, then rename
+            # This prevents partial reads if file is accessed while writing
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                dir=self.private_path.parent,
+                delete=False,
+                suffix=".tmp",
+                encoding="utf-8",
+            ) as tmp_file:
+                tmp_file.write(json_content)
+                tmp_path = Path(tmp_file.name)
 
-        return deepcopy(database)
+            # On Windows, we need to delete the old file first before renaming
+            # to avoid permission errors during concurrent access
+            self.private_path.unlink(missing_ok=True)
+
+            # Now rename temp file to target (safe because old file is gone)
+            tmp_path.replace(self.private_path)
+
+            self.set_database(database)
+
+            return deepcopy(database)
 
     def read(self) -> T:
         """Read database from file and cache it."""
-        if not self.private_path.exists():
-            return self.write(self.private_database_model())
+        with self.private_lock:
+            if not self.private_path.exists():
+                return self.write(self.private_database_model())
 
-        raw_database = self.private_path.read_text(
-            encoding="utf-8",
-            errors="strict",
-        )
-
-        if not raw_database:
-            return self.write(self.private_database_model())
-
-        try:
-            self.set_database(
-                self.private_database_model.model_validate_json(raw_database)
+            raw_database = self.private_path.read_text(
+                encoding="utf-8",
+                errors="strict",
             )
-        except ValidationError as error:
-            error_message = (
-                f"Failed to read database file {self.private_path} due to validation error:\n{error}\n"
-                "If this is for production use, consider implementing a migration strategy.\n"
-            )
-            raise ValueError(error_message)
 
-        return deepcopy(self.private_database)
+            if not raw_database:
+                return self.write(self.private_database_model())
+
+            try:
+                self.set_database(
+                    self.private_database_model.model_validate_json(raw_database)
+                )
+            except ValidationError as error:
+                error_message = (
+                    f"Failed to read database file {self.private_path} due to validation error:\n{error}\n"
+                    "If this is for production use, consider implementing a migration strategy.\n"
+                )
+                raise ValueError(error_message)
+
+            return deepcopy(self.private_database)
 
     def update_database(self, updated_database: T) -> T:
         """Update database with new data, write to file, and return a copy."""
