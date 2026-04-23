@@ -29,7 +29,8 @@ packages = ["src/jays_tools"]
 # Pytest configuration
 # Tells pytest where to find tests and how to run them
 [tool.pytest.ini_options]
-testpaths = ["tests"]                    # Where to look for tests
+pythonpath = ["."]                      # Add current directory to Python path so src.jays_tools can be found
+testpaths = ["tests"]                   # Where to look for tests
 python_files = "test_*.py"              # Test file naming pattern
 python_classes = "Test*"                # Test class naming pattern (e.g., TestDatabase)
 python_functions = "test_*"             # Test function naming pattern

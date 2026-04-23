@@ -1,9 +1,11 @@
 import re
-from typing import Any, ClassVar, Type
+from typing import ClassVar, Type, Any
 from pydantic import BaseModel, Field, model_validator
 from pydantic.fields import FieldInfo
 
+
 VERSION_REGEX = re.compile(r".*[vV](?P<model_number>\d*)$")
+
 
 class MigratableRow(BaseModel):
     id: int | None = Field(default=None, description="Auto-increment database ID")
@@ -33,9 +35,11 @@ class MigratableRow(BaseModel):
         
         # Enforce that all fields have defaults (except id and model_version)
         fields_without_defaults = []
-        for field_name, field_info in cls.model_fields.items():
-            if field_name not in ('id', 'model_version') and field_info.is_required():
-                fields_without_defaults.append(field_name)
+        for field_name in cls.__annotations__:
+            if field_name not in ('id', 'model_version'):
+                # Check if this field has a default value
+                if not hasattr(cls, field_name):
+                    fields_without_defaults.append(field_name)
         
         if fields_without_defaults:
             raise ValueError(
@@ -153,3 +157,7 @@ class MigratableRow(BaseModel):
     def get_fields(cls) -> dict[str, FieldInfo]:
         """Get model fields from the class (non-deprecated way)."""
         return cls.model_fields
+
+
+
+
