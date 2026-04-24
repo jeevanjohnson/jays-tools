@@ -551,8 +551,7 @@ class TestSQLDatabaseSchemaEvolution:
             def migrate(cls, previous: UserV1) -> "UserV2":
                 data = previous.model_dump()
                 data["email"] = "default@example.com"
-                # Use model_construct to avoid re-triggering validator
-                return cls.model_construct(**data)
+                return cls.from_migration(data)
 
         # Re-initialize with new schema
         db2 = SQLDatabase(temp_db_path, [UserV2])
@@ -581,8 +580,7 @@ class TestSQLDatabaseSchemaEvolution:
             def migrate(cls, previous: ItemV1) -> "ItemV2":
                 data = previous.model_dump()
                 data["price"] = 0.0
-                # Use model_construct to avoid re-triggering validator
-                return cls.model_construct(**data)
+                return cls.from_migration(data)
 
         db2 = SQLDatabase(temp_db_path, [ItemV2])
         db2.initialized = False

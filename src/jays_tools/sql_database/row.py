@@ -1,7 +1,8 @@
 import re
-from typing import Any, ClassVar, Type
+from typing import Any, ClassVar, Self, Type
 
 from pydantic import BaseModel, Field, model_validator
+from pydantic.fields import FieldInfo
 
 
 VERSION_REGEX = re.compile(r".*[vV](?P<model_number>\d*)$")
@@ -128,8 +129,8 @@ class MigratableRow(BaseModel):
                     f"Cannot migrate to version {current_model_version}"
                 )
             
-            # Use model_construct to bypass validators and avoid recursion
-            old_instance = old_model.model_construct(**data)
+            # Use from_migration to bypass validators and avoid recursion
+            old_instance = old_model.from_migration(data)
             # Call the NEXT model's migrate method to move from old to next version
             migrated_instance = next_model.migrate(old_instance)
             data = migrated_instance.model_dump()
@@ -142,6 +143,16 @@ class MigratableRow(BaseModel):
         data.pop("__skip_migrations__", None)
         return data
     
+    @classmethod
+    def from_migration(cls, data: dict[str, Any]) -> Self:
+        """
+        Construct an instance from migration data, bypassing validators.
+        
+        This is used internally during migrations to avoid triggering recursive
+        validators when constructing intermediate model instances.
+        """
+        return cls.model_construct(**data)
+
     @classmethod
     def migrate(cls, previous: 'MigratableRow') -> 'MigratableRow':
         """Convert from previous model to current model. Must be implemented if there is a previous model."""
@@ -157,7 +168,3 @@ class MigratableRow(BaseModel):
     def get_fields(cls) -> dict[str, FieldInfo]:
         """Get model fields from the class (non-deprecated way)."""
         return cls.model_fields
-
-
-
-

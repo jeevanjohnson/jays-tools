@@ -132,7 +132,7 @@ class SQLDatabase:
         columns = ["id INTEGER PRIMARY KEY AUTOINCREMENT", "model_version INTEGER DEFAULT 1"]
         
         # Dump an instance to see actual JSON values
-        instance = schema.model_construct()
+        instance = schema.from_migration({})
         dumped = instance.model_dump(mode="json")
         
         for field_name in schema.get_fields().keys():
@@ -153,7 +153,7 @@ class SQLDatabase:
         table_name = schema.get_table_name()
         
         # Dump an instance to see actual JSON values
-        instance = schema.model_construct()
+        instance = schema.from_migration({})
         dumped = instance.model_dump(mode="json")
         
         for field_name in schema.get_fields().keys():

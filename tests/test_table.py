@@ -324,8 +324,7 @@ class TestMigratableRowMigration:
             def migrate(cls, previous: CategoryV1) -> "CategoryV2":
                 data = previous.model_dump()
                 data["icon"] = "default"
-                # Use model_construct to avoid re-triggering validator
-                return cls.model_construct(**data)
+                return cls.from_migration(data)
 
         old_data = {"name": "Tech", "model_version": 1}
         result = CategoryV2.model_validate(old_data)
@@ -346,7 +345,7 @@ class TestMigratableRowMigration:
             def migrate(cls, previous: TagV1) -> "TagV2":
                 data = previous.model_dump()
                 data["color"] = "gray"
-                return cls.model_construct(**data)
+                return cls.from_migration(data)
 
         class TagV3(MigratableRow, previous_model=TagV2):
             name: str = ""
@@ -357,7 +356,7 @@ class TestMigratableRowMigration:
             def migrate(cls, previous: TagV2) -> "TagV3":
                 data = previous.model_dump()
                 data["active"] = True
-                return cls.model_construct(**data)
+                return cls.from_migration(data)
 
         old_data = {"name": "Python", "model_version": 1}
         result = TagV3.model_validate(old_data)
