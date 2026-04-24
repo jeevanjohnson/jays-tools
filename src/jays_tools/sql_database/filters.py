@@ -170,10 +170,6 @@ class QueryField:
         self.field_name = field_name
 
 
-# Backwards compatibility alias
-Field = QueryField
-
-
 # Explicit filter constructors
 def EqualTo(field: str, value: Any) -> ComparisonFilter:
     """Create equality filter (field == value)."""

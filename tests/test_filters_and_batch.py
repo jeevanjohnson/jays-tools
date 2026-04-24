@@ -7,7 +7,6 @@ from pathlib import Path
 from jays_tools.sql_database import (
     SQLDatabase,
     MigratableRow,
-    Field,
     ComparisonFilter,
     LikeFilter,
     InFilter,

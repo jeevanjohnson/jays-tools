@@ -3,7 +3,6 @@ from .row import MigratableRow
 from .filters import (
     Filter,
     QueryField,
-    Field,  # Backwards compatibility
     ComparisonFilter,
     LikeFilter,
     InFilter,
@@ -25,7 +24,6 @@ __all__ = [
     "MigratableRow",
     "Filter",
     "QueryField",
-    "Field",  # Backwards compatibility
     "ComparisonFilter",
     "LikeFilter",
     "InFilter",

@@ -10,7 +10,9 @@ requires-python = ">=3.13"
 readme = "README.md"
 license = {text = "MIT"}
 dependencies = [
-    "pydantic>=2.0",
+    "pydantic==2.12.5",
+    "aiosqlite==0.22.1",
+    "typing_extensions==4.15.0",
 ]
 
 # Optional dependencies for development
@@ -18,9 +20,9 @@ dependencies = [
 # This lets developers run tests without installing them for end users
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0",           # Testing framework
-    "pytest-cov>=4.0",       # Code coverage reports
-    "pytest-asyncio>=0.21",  # Async test support (for @pytest.mark.asyncio)
+    "pytest==9.0.3",           # Testing framework
+    "pytest-cov==7.1.0",       # Code coverage reports
+    "pytest-asyncio==1.3.0",   # Async test support (for @pytest.mark.asyncio)
 ]
 
 [tool.hatch.build.targets.wheel]

@@ -2,27 +2,35 @@
 
 Utilities for data persistence and application architecture that I use in my projects.
 
-See [PHILOSOPHY.md](./PHILOSOPHY.md) for the reasoning behind each tool.
-
-## Installation
+## Quick Start
 
 ```bash
 pip install jays-tools
 ```
+
+## Overview
+
+| Need | Tool |
+|------|------|
+| App config/state | **JsonDatabase** — Single-entity JSON storage with validation |
+| Multiple entities | **JsonCollection** — File-based distributed storage |
+| Complex queries | **SQLDatabase** — Type-safe SQLite with filtering |
+| Code structure | **Architecture Framework** — Five disciplined layers |
+| Service lifecycle | **Service Management** — Startup/shutdown coordination |
+
+Read [PHILOSOPHY.md](./PHILOSOPHY.md) to understand the design reasoning.
 
 ## Features
 
 ### JsonDatabase
 Single-entity JSON storage with Pydantic validation and automatic migrations.
 
-**Quick example**:
 ```python
 from jays_tools.json_database import JsonDatabase
 from jays_tools.json_database.models import MigratableModel
 
 class AppSettings(MigratableModel):
     debug: bool = False
-    api_key: str = ""
 
 db = JsonDatabase("settings.json", AppSettings)
 settings = db.get_database()
@@ -33,7 +41,6 @@ db.update_database(settings)
 ### JsonCollection
 Directory-based entity collections for distributed file storage and faster reads.
 
-**Quick example**:
 ```python
 from jays_tools.json_collection import JsonCollection
 from jays_tools.json_database.models import MigratableModel
@@ -44,68 +51,32 @@ class User(MigratableModel):
 
 collection = JsonCollection("data/users", model=User)
 collection.update("user_123", User(name="Alice", email="alice@example.com"))
-user = collection.get("user_123").get_database()
 ```
 
 ### SQLDatabase
 Async SQLite database with type-safe row models and automatic migrations.
 
-**Quick example**:
 ```python
-from jays_tools.sql_database import SQLDatabase, MigratableRow
-
-class User(MigratableRow):
-    name: str = ""
-    email: str = ""
+from jays_tools.sql_database import SQLDatabase, EqualTo
 
 db = SQLDatabase("app.db", [User])
 await db.initialize()
-
-user = User(name="Alice", email="alice@example.com")
-await db.insert(User, user)
-
+await db.insert(User, User(name="Alice", email="alice@example.com"))
 result = await db.select_one(User, filter=EqualTo("email", "alice@example.com"))
 ```
 
 ### Clean Architecture Framework
-Five disciplined layers with type-safe dependency injection.
+Five disciplined layers with type-safe dependency injection. Separate concerns into:
+- **Service**: Business logic (validation, calculations)
+- **Repository**: Data access (I/O, persistence)
+- **Adapter**: External integrations (APIs)
+- **DomainUseCase**: Workflow orchestration
+- **UseCase**: Entry-point formatting (HTTP, CLI)
 
-**Layers**:
-- **Service**: Pure business logic (calculations, validation)
-- **Repository**: Data access (files, databases, I/O)
-- **Adapter**: External integrations (APIs, services)
-- **DomainUseCase**: Business workflow orchestration
-- **UseCase**: Entry-point specific formatting (HTTP, CLI, etc.)
-
-**Quick example**:
 ```python
-from typing import TypedDict
 from jays_tools.architecture import Service, Repository, DomainUseCase
 
-class ValidationService(Service):
-    def validate_email(self, email: str) -> bool:
-        return "@" in email
-
-class UserRepository(Repository):
-    async def save_user(self, name: str, email: str) -> None:
-        # Persist user
-        pass
-
-class UserRepos(TypedDict):
-    users: UserRepository
-
-class UserServices(TypedDict):
-    validation: ValidationService
-
-class CreateUserUseCase(DomainUseCase[UserRepos, UserServices, dict]):
-    @classmethod
-    def init(cls):
-        return cls(
-            repos={"users": UserRepository()},
-            services={"validation": ValidationService()},
-            adapters={}
-        )
-    
+class CreateUserUseCase(DomainUseCase):
     async def execute(self, name: str, email: str):
         if not self.services["validation"].validate_email(email):
             raise ValueError("Invalid email")
@@ -113,115 +84,117 @@ class CreateUserUseCase(DomainUseCase[UserRepos, UserServices, dict]):
         return {"name": name, "email": email}
 ```
 
-## Core Features
+### Service Management
+Lifecycle management for long-running services with coordinated startup and shutdown.
 
-### Type Safety
-All utilities leverage Pydantic for validation. Your editor knows what fields exist and what types they have.
+**Structure**:
+```
+server/
+├── __init__.py
+└── service.py
 
-### Automatic Migrations  
-Update your schema without migration scripts. Old data automatically transforms to new versions.
+main.py
+```
 
-### Async Throughout
-All I/O operations are async-first. Non-blocking by default.
+**In `server/service.py`**:
+```python
+from jays_tools.services import Service, ReadinessSignal
 
-## Which Tool to Use
+def main(readiness_signal: ReadinessSignal):
+    print("Starting server...")
+    readiness_signal.set()
 
-| Use case | Tool |
-|----------|------|
-| App config/state | JsonDatabase |
-| Multiple entities | JsonCollection |
-| Queries and filtering | SQLDatabase |
-| Code structure | Architecture Framework |
+def shutdown():
+    print("Shutting down server...")
+
+def ServerService() -> Service:
+    return Service(
+        name="ServerService",
+        start=main,
+        stop=shutdown,
+    )
+```
+
+**In `main.py`**:
+```python
+from jays_tools.services import start_services, join_services, stop_services
+from server.service import ServerService
+
+if __name__ == "__main__":
+    services = [ServerService()]
+    start_services(services)
+    join_services(services)
+    stop_services(services)
+```
+
+## Core Principles
+
+**Type Safety**: All utilities leverage Pydantic for validation. Your editor knows what fields exist and their types.
+
+**Automatic Migrations**: Update schemas without migration scripts. Old data automatically transforms to new versions.
+
+**Async-First**: All I/O operations are async-first for non-blocking execution.
+
+**Minimal APIs**: Simple, predictable interfaces. No complex query languages or hidden magic.
 
 ## Documentation
 
-- **[PHILOSOPHY.md](./PHILOSOPHY.md)** — Why these tools exist and design decisions
+- **[PHILOSOPHY.md](./PHILOSOPHY.md)** — Design reasoning and evolution of each tool
 
 ## Common Patterns
 
-### File Reading + Parsing
+### Layered Architecture
+Organize code with clear separation: Repositories handle I/O, Services handle logic, UseCases coordinate.
+
 ```python
-# Repository handles I/O
+# Repository: I/O
 class FileRepository(Repository):
     async def read_csv(self, path: str) -> str:
         with open(path) as f:
             return f.read()
 
-# Service handles logic
+# Service: Logic
 class CSVParsingService(Service):
     def parse_csv(self, raw: str) -> list[dict]:
         lines = raw.strip().split('\n')
         headers = lines[0].split(',')
         return [dict(zip(headers, line.split(','))) for line in lines[1:]]
 
-# DomainUseCase orchestrates
+# DomainUseCase: Orchestration
 class ImportUseCase(DomainUseCase):
     async def execute(self, path: str):
         raw = await self.repos["files"].read_csv(path)
         parsed = self.services["parsing"].parse_csv(raw)
-        # Process parsed data
 ```
 
-### External API Integration
+### Database Queries
+Use filter objects to query SQLDatabase:
+
 ```python
-# Adapter wraps service
-class PaymentAdapter(Adapter):
-    async def charge(self, amount: float, token: str) -> dict:
-        response = await requests.post("https://payment-api.com/charge", ...)
-        return response.json()
+from jays_tools.sql_database import EqualTo, Like, GreaterThan
 
-# Service validates
-class PaymentService(Service):
-    def validate_amount(self, amount: float) -> bool:
-        return amount > 0
-
-# DomainUseCase coordinates
-class ProcessOrderUseCase(DomainUseCase):
-    async def execute(self, order_id: int, amount: float, token: str):
-        if not self.services["payment"].validate_amount(amount):
-            raise ValueError("Invalid amount")
-        result = await self.adapters["payment"].charge(amount, token)
-        # Record payment
-```
-
-### SQL Database with Filtering
-```python
-from jays_tools.sql_database import EqualTo, Like, LessThan
-
-# Find users by email
+# Simple filters
 user = await db.select_one(User, filter=EqualTo("email", "alice@example.com"))
-
-# Find users with names starting with "Al"
 users = await db.select_all(User, filter=Like("name", "Al%"))
 
-# Find users with ID less than 10
-recent = await db.select_all(User, filter=LessThan("user_id", 10))
-
-# Combine filters
-from jays_tools.sql_database import GreaterThan
-filter_obj = EqualTo("status", "active") & GreaterThan("user_id", 100)
-active_users = await db.select_all(User, filter=filter_obj)
+# Combined filters
+active_users = await db.select_all(
+    User, 
+    filter=EqualTo("status", "active") & GreaterThan("user_id", 100)
+)
 ```
 
 ## Testing
 
-Each layer is independently testable:
+Each layer is independently testable without complex mocks:
 
 ```python
-# Test service (no mocks needed)
+# Service test (pure function)
 def test_validate_email():
     service = ValidationService()
     assert service.validate_email("test@example.com")
 
-# Test repository (mock storage)
-@pytest.mark.asyncio
-async def test_save_user(tmp_path):
-    repo = UserRepository(db)
-    await repo.save_user(user)
-    saved = await repo.get_user(user.id)
-    assert saved.email == user.email
-
-# Test usecase (integration)
+# UseCase integration test
 @pytest.mark.asyncio
 async def test_create_user_flow():
     usecase = CreateUserUseCase.init()
