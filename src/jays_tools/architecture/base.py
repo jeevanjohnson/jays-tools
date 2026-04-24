@@ -53,13 +53,13 @@ class DomainUseCase(Generic[T_Repos, T_Services, T_Adapters]):
 
     def __init__(
         self,
-        repos: T_Repos,
-        services: T_Services,
-        adapters: T_Adapters,
+        repos: T_Repos | None,
+        services: T_Services | None,
+        adapters: T_Adapters | None,
     ) -> None:
-        self.repos = repos
-        self.services = services
-        self.adapters = adapters
+        self.repos = repos or NoRepos()
+        self.services = services or NoServices()
+        self.adapters = adapters or NoAdapters()
 
     @classmethod
     @abstractmethod
