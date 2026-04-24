@@ -79,6 +79,7 @@ class TestServiceInit:
         assert service.process is None
         assert service.ready is False
         assert service.readiness_watcher is None
+        assert service.running is False
 
     def test_init_with_stop_func(self):
         """Initialize Service with optional stop function."""
@@ -98,6 +99,12 @@ class TestServiceInit:
         service2 = Service("Service2", simple_service_func)
         assert service1.name == "Service1"
         assert service2.name == "Service2"
+
+    def test_init_running_flag_false(self):
+        """running flag is initialized to False."""
+        service = Service("TestService", simple_service_func)
+        assert service.running is False
+        assert service.is_running() is False
 
 
 class TestServiceStart:
@@ -150,6 +157,22 @@ class TestServiceStart:
         
         service.stop()
 
+    def test_start_sets_running_flag(self):
+        """Starting a service sets the running flag to True."""
+        service = Service("TestService", simple_service_func)
+        
+        assert service.running is False
+        assert service.is_running() is False
+        
+        service.start()
+        time.sleep(0.05)
+        
+        assert service.running is True
+        assert service.is_running() is True
+        
+        service.stop()
+        service.stop()
+
 
 class TestServiceIsReady:
     """Test suite for Service.is_ready()."""
@@ -179,6 +202,94 @@ class TestServiceIsReady:
         
         service.stop()
         assert service.is_ready() is False
+
+
+class TestServiceIsRunning:
+    """Test suite for Service.is_running()."""
+
+    def test_is_running_false_before_start(self):
+        """Service is not running before start() is called."""
+        service = Service("TestService", simple_service_func)
+        assert service.is_running() is False
+
+    def test_is_running_true_after_start(self):
+        """Service is running after start() is called."""
+        service = Service("TestService", simple_service_func)
+        service.start()
+        time.sleep(0.1)
+        
+        assert service.is_running() is True
+        
+        service.stop()
+
+    def test_is_running_false_after_stop(self):
+        """Service is not running after being stopped."""
+        service = Service("TestService", simple_service_func)
+        service.start()
+        time.sleep(0.1)
+        
+        assert service.is_running() is True
+        
+        service.stop()
+        assert service.is_running() is False
+
+    def test_is_running_vs_is_ready(self):
+        """is_running() and is_ready() represent different states."""
+        service = Service("TestService", slow_service_func)
+        service.start()
+        time.sleep(0.05)
+        
+        # Just after start, running is True but ready may still be False
+        assert service.is_running() is True
+        
+        # Wait for ready signal
+        wait_for_ready(service)
+        assert service.is_ready() is True
+        assert service.is_running() is True
+        
+        service.stop()
+        
+        # After stop, both should be False
+        assert service.is_running() is False
+        assert service.is_ready() is False
+
+    def test_is_running_without_process(self):
+        """is_running() returns False when no process exists."""
+        service = Service("TestService", simple_service_func)
+        service.stop()  # Stop without starting
+        
+        assert service.is_running() is False
+
+    def test_is_running_multiple_services(self):
+        """is_running() correctly tracks state for multiple services."""
+        service1 = Service("Service1", simple_service_func)
+        service2 = Service("Service2", simple_service_func)
+        
+        # Before start
+        assert service1.is_running() is False
+        assert service2.is_running() is False
+        
+        # Start first service
+        service1.start()
+        time.sleep(0.05)
+        assert service1.is_running() is True
+        assert service2.is_running() is False
+        
+        # Start second service
+        service2.start()
+        time.sleep(0.05)
+        assert service1.is_running() is True
+        assert service2.is_running() is True
+        
+        # Stop first service
+        service1.stop()
+        assert service1.is_running() is False
+        assert service2.is_running() is True
+        
+        # Stop second service
+        service2.stop()
+        assert service1.is_running() is False
+        assert service2.is_running() is False
 
 
 class TestServiceStop:
@@ -280,6 +391,20 @@ class TestServiceStop:
         
         captured = capsys.readouterr()
         assert "has been stopped" in captured.out
+
+    def test_stop_clears_running_flag(self):
+        """Stopping a service sets the running flag to False."""
+        service = Service("TestService", simple_service_func)
+        service.start()
+        time.sleep(0.1)
+        
+        assert service.running is True
+        assert service.is_running() is True
+        
+        service.stop()
+        
+        assert service.running is False
+        assert service.is_running() is False
 
 
 class TestServiceJoin:
@@ -508,3 +633,32 @@ class TestServiceLifecycle:
         assert service.is_ready() is True
         service.stop()
         assert service.is_ready() is False
+
+    def test_lifecycle_running_state(self):
+        """Running state transitions correctly through lifecycle."""
+        service = Service("RunningStateTest", simple_service_func)
+        
+        # Initial state
+        assert service.is_running() is False
+        assert service.running is False
+        
+        # After start
+        service.start()
+        time.sleep(0.1)
+        assert service.is_running() is True
+        assert service.running is True
+        assert service.process is not None
+        
+        # After stop
+        service.stop()
+        assert service.is_running() is False
+        assert service.running is False
+        assert service.process is None
+        
+        # After restart
+        service.start()
+        time.sleep(0.1)
+        assert service.is_running() is True
+        assert service.running is True
+        
+        service.stop()

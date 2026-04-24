@@ -29,8 +29,9 @@ class Service:
         self.stop_func = stop_func
 
         self.process: Process | None = None
-        self.ready_event = Event()
+        self.running: bool = False        
 
+        self.ready_event = Event()
         self.ready: bool = False
         self.readiness_watcher: Thread | None = None
 
@@ -51,12 +52,18 @@ class Service:
         """Check if service is ready."""
         return self.ready
 
+    def is_running(self) -> bool:
+        """Check if service process is alive."""
+        return self.running
+
     def start(self) -> None:
         """Start the service and watch for readiness."""
         self._start()
 
         self.readiness_watcher = Thread(target=self.wait_until_ready)
         self.readiness_watcher.start()
+
+        self.running = True
 
     def join(self) -> None:
         """Wait for service to complete.
@@ -73,10 +80,10 @@ class Service:
         if self.process:
             self.process.terminate()
             self.process.join()
-        
+            self.running = False
+
         if self.stop_func:
-            self.stop_func()
-        
+            self.stop_func()        
 
         self.ready = False
         self.process = None
