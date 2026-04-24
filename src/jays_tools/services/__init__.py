@@ -1,15 +1,15 @@
 from .base import (
-    Service, 
     ReadinessSignal,
+    Service,
+    join_services,
     start_services,
     stop_services,
-    join_services
 )
 
 __all__ = [
-    "Service", 
+    "Service",
     "ReadinessSignal",
     "start_services",
     "stop_services",
-    "join_services"
+    "join_services",
 ]

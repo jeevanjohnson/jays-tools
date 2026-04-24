@@ -1,7 +1,7 @@
 import re
-from typing import ClassVar, Type, Any
+from typing import Any, ClassVar, Type
+
 from pydantic import BaseModel, Field, model_validator
-from pydantic.fields import FieldInfo
 
 
 VERSION_REGEX = re.compile(r".*[vV](?P<model_number>\d*)$")

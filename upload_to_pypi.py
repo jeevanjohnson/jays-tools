@@ -1,7 +1,8 @@
+import shutil
 import subprocess
 import sys
+
 import config
-import shutil
 
 # Dev Notes:
 # - Referencing: https://semver.org/
@@ -15,26 +16,31 @@ import shutil
 # then git push --force-with-lease to update the remote repo with the reset commit history.
 
 def get_name(file_path: str) -> str:
+    """Extract package name from pyproject.toml."""
     with open(file_path, "r") as f:
         for line in f:
             if line.startswith("name = "):
                 name = line.split("=")[1].strip().strip('"')
                 return name
-    
+
     raise ValueError("Name not found in file")
 
+
 def get_version(file_path: str) -> str:
+    """Extract version from pyproject.toml."""
     with open(file_path, "r") as f:
         for line in f:
             if line.startswith("version = "):
                 version = line.split("=")[1].strip().strip('"')
                 return version
-    
+
     raise ValueError("Version not found in file")
 
+
 def update_version(version: str, update_type: str) -> str:
+    """Update version string based on update type (patch, minor, major)."""
     major, minor, patch = map(int, version.split("."))
-    
+
     if update_type == "patch":
         patch += 1
     elif update_type == "minor":
@@ -45,9 +51,11 @@ def update_version(version: str, update_type: str) -> str:
         minor = 0
         patch = 0
 
-    return f'{major}.{minor}.{patch}'
+    return f"{major}.{minor}.{patch}"
+
 
 def update_version_in_file(file_path: str, version_number: str) -> None:
+    """Update version in pyproject.toml file."""
     with open(file_path, "r") as f:
         lines = f.readlines()
 
@@ -59,7 +67,7 @@ def update_version_in_file(file_path: str, version_number: str) -> None:
     with open(file_path, "w") as f:
         f.writelines(lines)
 
-args =  sys.argv[1:]
+args = sys.argv[1:]
 version = get_version("pyproject.toml")
 name = get_name("pyproject.toml")
 

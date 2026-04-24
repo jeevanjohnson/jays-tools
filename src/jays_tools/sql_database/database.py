@@ -1,9 +1,11 @@
-import aiosqlite
 import json
-from typing import Any, Type, TypeVar, Union
 from pathlib import Path
-from  .row import MigratableRow
-from .filters import Filter, ComparisonFilter
+from typing import Any, Type, TypeVar, Union
+
+import aiosqlite
+
+from .filters import ComparisonFilter, Filter
+from .row import MigratableRow
 
 T = TypeVar("T", bound=MigratableRow)
 

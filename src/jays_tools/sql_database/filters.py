@@ -224,7 +224,6 @@ __all__ = [
     "BetweenFilter",
     "FilterGroup",
     "QueryField",
-    "Field",  # Alias for backwards compatibility
     "EqualTo",
     "NotEqualTo",
     "LessThan",
