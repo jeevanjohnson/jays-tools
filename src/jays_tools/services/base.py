@@ -51,13 +51,10 @@ class Service:
     # TODO: parallel joining?
     def join(self):
         if self.process:
-            try:
-                if self.readiness_watcher:
-                    self.readiness_watcher.join()
-                
-                self.process.join()
-            except KeyboardInterrupt:
-                self.stop()
+            if self.readiness_watcher:
+                self.readiness_watcher.join()
+            
+            self.process.join()
 
     def stop(self):
         if self.process:
