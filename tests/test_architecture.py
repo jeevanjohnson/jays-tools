@@ -96,7 +96,7 @@ class TestDomainUseCaseInitialization:
                 return cls(repos, services, adapters)
 
         usecase = TestDomainUseCase(repos, services, adapters)
-        assert usecase.repos == repos
+        assert usecase.repositories == repos
         assert usecase.services == services
         assert usecase.adapters == adapters
 
@@ -108,7 +108,7 @@ class TestDomainUseCaseInitialization:
                 return cls({}, {}, {})
 
         usecase = TestDomainUseCase({}, {}, {})
-        assert usecase.repos == {}
+        assert usecase.repositories == {}
         assert usecase.services == {}
         assert usecase.adapters == {}
 
@@ -122,7 +122,7 @@ class TestDomainUseCaseInitialization:
         instance = ProperUseCase.init()
         assert instance is not None
         assert isinstance(instance, ProperUseCase)
-        assert instance.repos == {"repo": "r1"}
+        assert instance.repositories == {"repo": "r1"}
         assert instance.services == {"svc": "s1"}
         assert instance.adapters == {"adp": "a1"}
 
@@ -156,18 +156,18 @@ class TestDomainUseCaseGenericTypes:
         class AdaptersType(TypedDict):
             api: str
 
-        class MultiTypeUseCase(
-            DomainUseCase[ReposType, ServicesType, AdaptersType]
-        ):
+        class MultiTypeUseCase(DomainUseCase[ReposType, ServicesType, AdaptersType]):
+
             @classmethod
             def init(cls):
-                repos: ReposType = {"user": "u", "product": "p"}
-                services: ServicesType = {"calc": "c"}
-                adapters: AdaptersType = {"api": "a"}
-                return cls(repos, services, adapters)
+                return cls(
+                    {"user": "user_repo", "product": "product_repo"},
+                    {"calc": "calc_service"},
+                    {"api": "api_adapter"},
+                )
 
         usecase = MultiTypeUseCase.init()
-        assert len(usecase.repos) == 2
+        assert len(usecase.repositories) == 2
         assert len(usecase.services) == 1
         assert len(usecase.adapters) == 1
 
@@ -369,15 +369,20 @@ class TestArchitectureLayerIntegration:
             api: APIAdapter
 
         class RecalculateUser(DomainUseCase[UserRepos, UserServices, UserAdapters]):
+
             @classmethod
             def init(cls):
-                repos: UserRepos = {"user": UserRepository()}
-                services: UserServices = {"rank": RankCalculator()}
-                adapters: UserAdapters = {"api": APIAdapter()}
-                return cls(repos, services, adapters)
+                return cls(
+                    {"user": UserRepository()},
+                    {"rank": RankCalculator()},
+                    {"api": APIAdapter()},
+                )
+
+        class UpdateUserDomainUseCases(TypedDict):
+            recalculate: RecalculateUser
 
         # Use case
-        class UpdateUserUseCase(UseCase[dict]):
+        class UpdateUserUseCase(UseCase[UpdateUserDomainUseCases]):
             @classmethod
             def init(cls):
                 return cls({"recalculate": RecalculateUser.init()})
@@ -388,7 +393,7 @@ class TestArchitectureLayerIntegration:
         assert "recalculate" in usecase.domain
         domain_uc = usecase.domain["recalculate"]
         assert isinstance(domain_uc, DomainUseCase)
-        assert "user" in domain_uc.repos
+        assert "user" in domain_uc.repositories
         assert "rank" in domain_uc.services
         assert "api" in domain_uc.adapters
 

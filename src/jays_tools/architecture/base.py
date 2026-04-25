@@ -18,14 +18,14 @@ All layers are type-safe - mypy/Pylance will catch violations at development tim
 """
 
 from abc import ABC, abstractmethod
-from typing import Generic, TypeAlias, TypeVar
+from typing import Generic, Mapping, TypeAlias, TypeVar
 
-T_Repos = TypeVar("T_Repos")
-T_Services = TypeVar("T_Services")
-T_Adapters = TypeVar("T_Adapters")
-T_DomainUseCases = TypeVar("T_DomainUseCases")
+T_Repositories = TypeVar("T_Repositories", bound=Mapping)
+T_Services = TypeVar("T_Services", bound=Mapping)
+T_Adapters = TypeVar("T_Adapters", bound=Mapping)
+T_DomainUseCases = TypeVar("T_DomainUseCases", bound=Mapping)
 
-NoRepos: TypeAlias = dict
+NoRepositories: TypeAlias = dict
 NoServices: TypeAlias = dict
 NoAdapters: TypeAlias = dict
 
@@ -48,16 +48,20 @@ class Service(ABC):
     pass
 
 
-class DomainUseCase(Generic[T_Repos, T_Services, T_Adapters]):
-    """Orchestrates services, repos, and adapters (shared across entry-points)."""
+class DomainUseCase(Generic[T_Repositories, T_Services, T_Adapters]):
+    """Orchestrates services, repositories, and adapters (shared across entry-points)."""
+
+    repositories: T_Repositories | NoRepositories
+    services: T_Services | NoServices
+    adapters: T_Adapters | NoAdapters
 
     def __init__(
         self,
-        repos: T_Repos | None,
+        repositories: T_Repositories | None,
         services: T_Services | None,
         adapters: T_Adapters | None,
     ) -> None:
-        self.repos = repos or NoRepos()
+        self.repositories = repositories or NoRepositories()
         self.services = services or NoServices()
         self.adapters = adapters or NoAdapters()
 
@@ -71,16 +75,16 @@ class DomainUseCase(Generic[T_Repos, T_Services, T_Adapters]):
 
         Example:
         ```python
-        class RecalculateStats(DomainUseCase[UserRepos, UserServices, NoAdapters]):
+        class RecalculateStats(DomainUseCase[UserRepositories, UserServices, NoAdapters]):
             @classmethod
             def init(cls) -> "RecalculateStats":
-                repos: UserRepos = {
+                repositories: UserRepositories = {
                     "users": JsonUserRepository("users.json"),
                 }
                 services: UserServices = {
                     "rank_calc": RankCalculator(),
                 }
-                return cls(repos, services, NoAdapters())
+                return cls(repositories, services, NoAdapters())
         ```
         """
         pass
