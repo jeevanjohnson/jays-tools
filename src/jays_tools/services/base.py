@@ -21,10 +21,12 @@ class Service:
     def __init__(
         self,
         name: str,
+        description: str,
         start_func: Callable[[ReadinessSignal], None],
         stop_func: Callable[[], None] | None = None,
     ) -> None:
         self.name = name
+        self.description = description
         self.start_func = start_func
         self.stop_func = stop_func
 
@@ -65,6 +67,8 @@ class Service:
 
         self.running = True
 
+        success(f"{self.name} has been started. Waiting for readiness...")
+
     def join(self) -> None:
         """Wait for service to complete.
 
@@ -90,7 +94,8 @@ class Service:
         self.ready_event = Event()
         self.readiness_watcher = None
 
-        success(f"{self.name} has been stopped.")
+        if self.process or self.stop_func:
+            success(f"{self.name} has been stopped.")
 
 def start_services(services: list[Service]) -> None:
     for service in services:
