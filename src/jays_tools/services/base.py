@@ -89,13 +89,14 @@ class Service:
         if self.stop_func:
             self.stop_func()        
 
+        if self.process or self.stop_func:
+            success(f"{self.name} has been stopped.")
+
         self.ready = False
         self.process = None
         self.ready_event = Event()
         self.readiness_watcher = None
 
-        if self.process or self.stop_func:
-            success(f"{self.name} has been stopped.")
 
 def start_services(services: list[Service]) -> None:
     for service in services:
