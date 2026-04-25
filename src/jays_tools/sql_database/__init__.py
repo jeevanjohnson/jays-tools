@@ -1,5 +1,5 @@
 from .database import SQLDatabase
-from .row import MigratableRow
+from .models import MigratableSQLModel
 from .filters import (
     Filter,
     QueryField,
@@ -21,7 +21,7 @@ from .filters import (
 
 __all__ = [
     "SQLDatabase",
-    "MigratableRow",
+    "MigratableSQLModel",
     "Filter",
     "QueryField",
     "ComparisonFilter",

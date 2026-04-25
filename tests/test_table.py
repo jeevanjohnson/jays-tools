@@ -1,16 +1,16 @@
-"""Tests for MigratableRow model versioning and migration system."""
+"""Tests for MigratableSQLModel model versioning and migration system."""
 
 import pytest
 from pydantic import Field
-from jays_tools.sql_database.row import MigratableRow
+from jays_tools.sql_database.models import MigratableSQLModel
 
 
-class TestMigratableRowClassValidation:
-    """Test suite for MigratableRow class definition and validation."""
+class TestMigratableSQLModelClassValidation:
+    """Test suite for MigratableSQLModel class definition and validation."""
 
     def test_init_subclass_valid_class_name_v1(self):
         """Valid class name with V1 suffix is accepted."""
-        class UserV1(MigratableRow):
+        class UserV1(MigratableSQLModel, table=True):
             name: str = ""
             email: str = ""
 
@@ -20,15 +20,15 @@ class TestMigratableRowClassValidation:
 
     def test_init_subclass_valid_class_name_v2(self):
         """Valid class name with V2 suffix is accepted."""
-        class UserV1(MigratableRow):
+        class UserV1(MigratableSQLModel, table=True):
             name: str = ""
 
-        class UserV2(MigratableRow, previous_model=UserV1):
+        class UserV2(MigratableSQLModel, table=True, previous_model=UserV1):
             name: str = ""
             age: int = 0
 
             @classmethod
-            def migrate(cls, previous: MigratableRow) -> "UserV2":
+            def migrate(cls, previous: MigratableSQLModel) -> "UserV2":
                 data = previous.model_dump()
                 data["age"] = 0
                 return cls(**data)
@@ -40,78 +40,78 @@ class TestMigratableRowClassValidation:
     def test_init_subclass_invalid_class_name_no_version(self):
         """Class name without version number raises ValueError."""
         with pytest.raises(ValueError, match="must end with a version number"):
-            class User(MigratableRow):
+            class User(MigratableSQLModel, table=True):
                 name: str = ""
 
     def test_init_subclass_invalid_class_name_lowercase_v(self):
         """Class name with lowercase 'v' is valid."""
-        class Userv1(MigratableRow):
+        class Userv1(MigratableSQLModel, table=True):
             name: str = ""
 
         assert Userv1.__table_name__ == "User"
 
     def test_init_subclass_invalid_class_name_uppercase_v(self):
         """Class name with uppercase 'V' is valid."""
-        class UserV1(MigratableRow):
+        class UserV1(MigratableSQLModel, table=True):
             name: str = ""
 
         assert UserV1.__table_name__ == "User"
 
     def test_init_subclass_previous_model_not_subclass_raises(self):
-        """previous_model that isn't MigratableRow raises ValueError."""
-        class NotMigratableRow:
+        """previous_model that isn't MigratableSQLModel raises ValueError."""
+        class NotMigratableSQLModel:
             pass
 
-        with pytest.raises(ValueError, match="must be a subclass of MigratableRow"):
-            class UserV2(MigratableRow, previous_model=NotMigratableRow):
+        with pytest.raises(ValueError, match="must be a subclass of MigratableSQLModel"):
+            class UserV2(MigratableSQLModel, table=True, previous_model=NotMigratableSQLModel):
                 name: str = ""
 
     def test_init_subclass_previous_model_different_table_name_raises(self):
         """previous_model with different table name raises ValueError."""
-        class UserV1(MigratableRow):
+        class UserV1(MigratableSQLModel, table=True):
             name: str = ""
 
         with pytest.raises(ValueError, match="same table name"):
-            class ProfileV2(MigratableRow, previous_model=UserV1):
+            class ProfileV2(MigratableSQLModel, table=True, previous_model=UserV1):
                 name: str = ""
 
                 @classmethod
-                def migrate(cls, previous: MigratableRow) -> "ProfileV2":
+                def migrate(cls, previous: MigratableSQLModel) -> "ProfileV2":
                     return cls(**previous.model_dump())
 
     def test_init_subclass_version_not_incremented_by_one_raises(self):
         """Version increment not by 1 raises ValueError."""
-        class UserV1(MigratableRow):
+        class UserV1(MigratableSQLModel, table=True):
             name: str = ""
 
         with pytest.raises(ValueError, match="increment by 1"):
-            class UserV3(MigratableRow, previous_model=UserV1):
+            class UserV3(MigratableSQLModel, table=True, previous_model=UserV1):
                 name: str = ""
 
                 @classmethod
-                def migrate(cls, previous: MigratableRow) -> "UserV3":
+                def migrate(cls, previous: MigratableSQLModel) -> "UserV3":
                     return cls(**previous.model_dump())
 
     def test_init_subclass_missing_migrate_raises_type_error(self):
         """previous_model without migrate() implementation raises TypeError."""
-        class UserV1(MigratableRow):
+        class UserV1(MigratableSQLModel, table=True):
             name: str = ""
 
         with pytest.raises(TypeError, match="must implement migrate"):
-            class UserV2(MigratableRow, previous_model=UserV1):
+            class UserV2(MigratableSQLModel, table=True, previous_model=UserV1):
                 name: str = ""
                 # Missing migrate() method
 
     def test_init_subclass_field_without_default_raises_value_error(self):
         """Field without default value raises ValueError."""
         with pytest.raises(ValueError, match="fields must have defaults"):
-            class UserV1(MigratableRow):
+            class UserV1(MigratableSQLModel, table=True):
                 name: str  # No default value!
 
     def test_init_subclass_field_without_default_error_message_is_helpful(self):
         """Error message for missing defaults is specific and helpful."""
         with pytest.raises(ValueError) as exc_info:
-            class UserV1(MigratableRow):
+            class UserV1(MigratableSQLModel, table=True):
                 email: str  # No default
         
         error_msg = str(exc_info.value)
@@ -122,7 +122,7 @@ class TestMigratableRowClassValidation:
     def test_init_subclass_multiple_fields_without_defaults_lists_all(self):
         """All fields without defaults are listed in error message."""
         with pytest.raises(ValueError) as exc_info:
-            class UserV1(MigratableRow):
+            class UserV1(MigratableSQLModel, table=True):
                 username: str  # No default
                 email: str     # No default
         
@@ -133,7 +133,7 @@ class TestMigratableRowClassValidation:
     def test_init_subclass_id_field_exempt_from_default_requirement(self):
         """id field is exempt from default requirement (already has default)."""
         # Should not raise - id has a default
-        class UserV1(MigratableRow):
+        class UserV1(MigratableSQLModel, table=True):
             name: str = ""
         
         assert UserV1.__table_name__ == "User"
@@ -141,14 +141,14 @@ class TestMigratableRowClassValidation:
     def test_init_subclass_model_version_exempt_from_default_requirement(self):
         """model_version field is exempt from default requirement (already has default)."""
         # Should not raise - model_version has a default
-        class UserV1(MigratableRow):
+        class UserV1(MigratableSQLModel, table=True):
             name: str = ""
         
         assert UserV1.__table_name__ == "User"
 
     def test_init_subclass_all_fields_with_defaults_succeeds(self):
         """Class with all fields having defaults is accepted."""
-        class UserV1(MigratableRow):
+        class UserV1(MigratableSQLModel, table=True):
             name: str = ""
             age: int = 0
             email: str = "default@example.com"
@@ -159,34 +159,34 @@ class TestMigratableRowClassValidation:
 
     def test_init_subclass_optional_field_with_none_default_is_valid(self):
         """Optional field with None default is valid."""
-        class UserV1(MigratableRow):
+        class UserV1(MigratableSQLModel, table=True):
             name: str = ""
             bio: str | None = None
         
         assert UserV1.__table_name__ == "User"
 
 
-class TestMigratableRowBasicMethods:
-    """Test suite for basic MigratableRow methods."""
+class TestMigratableSQLModelBasicMethods:
+    """Test suite for basic MigratableSQLModel methods."""
 
     def test_get_table_name(self):
         """get_table_name returns table name without version suffix."""
-        class ProfileV1(MigratableRow):
+        class ProfileV1(MigratableSQLModel, table=True):
             username: str = ""
 
         assert ProfileV1.get_table_name() == "Profile"
 
     def test_get_table_name_multiple_versions(self):
         """get_table_name returns same name across versions."""
-        class ProductV1(MigratableRow):
+        class ProductV1(MigratableSQLModel, table=True):
             name: str = ""
 
-        class ProductV2(MigratableRow, previous_model=ProductV1):
+        class ProductV2(MigratableSQLModel, table=True, previous_model=ProductV1):
             name: str = ""
             price: float = 0.0
 
             @classmethod
-            def migrate(cls, previous: MigratableRow) -> "ProductV2":
+            def migrate(cls, previous: MigratableSQLModel) -> "ProductV2":
                 data = previous.model_dump()
                 data["price"] = 0.0
                 return cls(**data)
@@ -195,7 +195,7 @@ class TestMigratableRowBasicMethods:
 
     def test_get_fields_returns_model_fields(self):
         """get_fields returns model field info."""
-        class PersonV1(MigratableRow):
+        class PersonV1(MigratableSQLModel, table=True):
             first_name: str = ""
             age: int = 0
 
@@ -207,7 +207,7 @@ class TestMigratableRowBasicMethods:
 
     def test_id_field_auto_increment(self):
         """id field defaults to None and is optional."""
-        class ItemV1(MigratableRow):
+        class ItemV1(MigratableSQLModel, table=True):
             name: str = ""
 
         item = ItemV1(name="test")
@@ -215,7 +215,7 @@ class TestMigratableRowBasicMethods:
 
     def test_id_field_set_manually(self):
         """id field can be set manually."""
-        class ItemV1(MigratableRow):
+        class ItemV1(MigratableSQLModel, table=True):
             name: str = ""
 
         item = ItemV1(name="test", id=42)
@@ -223,19 +223,19 @@ class TestMigratableRowBasicMethods:
 
     def test_model_version_defaults_to_one(self):
         """model_version defaults to 1."""
-        class DocV1(MigratableRow):
+        class DocV1(MigratableSQLModel, table=True):
             title: str = ""
 
         doc = DocV1(title="test")
         assert doc.model_version == 1
 
 
-class TestMigratableRowGetModelFromVersion:
+class TestMigratableSQLModelGetModelFromVersion:
     """Test suite for get_model_from_version traversal."""
 
     def test_get_model_from_version_same_version(self):
         """get_model_from_version returns self when version matches."""
-        class ArticleV1(MigratableRow):
+        class ArticleV1(MigratableSQLModel, table=True):
             title: str = ""
 
         result = ArticleV1.get_model_from_version(1)
@@ -243,15 +243,15 @@ class TestMigratableRowGetModelFromVersion:
 
     def test_get_model_from_version_previous_model(self):
         """get_model_from_version traverses to previous model."""
-        class ArticleV1(MigratableRow):
+        class ArticleV1(MigratableSQLModel, table=True):
             title: str = ""
 
-        class ArticleV2(MigratableRow, previous_model=ArticleV1):
+        class ArticleV2(MigratableSQLModel, table=True, previous_model=ArticleV1):
             title: str = ""
             author: str = ""
 
             @classmethod
-            def migrate(cls, previous: MigratableRow) -> "ArticleV2":
+            def migrate(cls, previous: MigratableSQLModel) -> "ArticleV2":
                 data = previous.model_dump()
                 data["author"] = "Unknown"
                 return cls(**data)
@@ -261,26 +261,26 @@ class TestMigratableRowGetModelFromVersion:
 
     def test_get_model_from_version_long_chain(self):
         """get_model_from_version traverses long version chain."""
-        class EventV1(MigratableRow):
+        class EventV1(MigratableSQLModel, table=True):
             name: str = ""
 
-        class EventV2(MigratableRow, previous_model=EventV1):
+        class EventV2(MigratableSQLModel, table=True, previous_model=EventV1):
             name: str = ""
             date: str = ""
 
             @classmethod
-            def migrate(cls, previous: MigratableRow) -> "EventV2":
+            def migrate(cls, previous: MigratableSQLModel) -> "EventV2":
                 data = previous.model_dump()
                 data["date"] = ""
                 return cls(**data)
 
-        class EventV3(MigratableRow, previous_model=EventV2):
+        class EventV3(MigratableSQLModel, table=True, previous_model=EventV2):
             name: str = ""
             date: str = ""
             location: str = ""
 
             @classmethod
-            def migrate(cls, previous: MigratableRow) -> "EventV3":
+            def migrate(cls, previous: MigratableSQLModel) -> "EventV3":
                 data = previous.model_dump()
                 data["location"] = ""
                 return cls(**data)
@@ -291,19 +291,19 @@ class TestMigratableRowGetModelFromVersion:
 
     def test_get_model_from_version_not_found_returns_none(self):
         """get_model_from_version returns None if version doesn't exist."""
-        class CommentV1(MigratableRow):
+        class CommentV1(MigratableSQLModel, table=True):
             text: str = ""
 
         result = CommentV1.get_model_from_version(99)
         assert result is None
 
 
-class TestMigratableRowMigration:
+class TestMigratableSQLModelMigration:
     """Test suite for model migration via validator."""
 
     def test_run_migrations_no_migration_needed(self):
         """Data with current version passes through unchanged."""
-        class TagV1(MigratableRow):
+        class TagV1(MigratableSQLModel, table=True):
             label: str = ""
 
         data = {"label": "python", "model_version": 1}
@@ -313,10 +313,10 @@ class TestMigratableRowMigration:
 
     def test_run_migrations_single_version_gap(self):
         """Data from V1 migrates to V2 successfully."""
-        class CategoryV1(MigratableRow):
+        class CategoryV1(MigratableSQLModel, table=True):
             name: str = ""
 
-        class CategoryV2(MigratableRow, previous_model=CategoryV1):
+        class CategoryV2(MigratableSQLModel, table=True, previous_model=CategoryV1):
             name: str = ""
             icon: str = ""
 
@@ -334,10 +334,10 @@ class TestMigratableRowMigration:
 
     def test_run_migrations_multi_version_gap(self):
         """Data from V1 migrates through V2, V3 chain."""
-        class TagV1(MigratableRow):
+        class TagV1(MigratableSQLModel, table=True):
             name: str = ""
 
-        class TagV2(MigratableRow, previous_model=TagV1):
+        class TagV2(MigratableSQLModel, table=True, previous_model=TagV1):
             name: str = ""
             color: str = ""
 
@@ -347,7 +347,7 @@ class TestMigratableRowMigration:
                 data["color"] = "gray"
                 return cls.from_migration(data)
 
-        class TagV3(MigratableRow, previous_model=TagV2):
+        class TagV3(MigratableSQLModel, table=True, previous_model=TagV2):
             name: str = ""
             color: str = ""
             active: bool = False
@@ -366,7 +366,7 @@ class TestMigratableRowMigration:
 
     def test_run_migrations_missing_model_version_raises(self):
         """Data with gap to non-existent version raises ValueError."""
-        class ItemV2(MigratableRow):
+        class ItemV2(MigratableSQLModel, table=True):
             name: str = ""
 
         with pytest.raises(ValueError, match="No model found for version"):
@@ -374,10 +374,10 @@ class TestMigratableRowMigration:
 
     def test_run_migrations_with_custom_validation(self):
         """Migration works with field validation and defaults."""
-        class UserV1(MigratableRow):
+        class UserV1(MigratableSQLModel, table=True):
             username: str = Field(min_length=1)
 
-        class UserV2(MigratableRow, previous_model=UserV1):
+        class UserV2(MigratableSQLModel, table=True, previous_model=UserV1):
             username: str = Field(min_length=1)
             email: str = Field(default="noemail@example.com")
 
@@ -391,15 +391,15 @@ class TestMigratableRowMigration:
         assert result.email == "noemail@example.com"
 
 
-class TestMigratableRowEdgeCases:
+class TestMigratableSQLModelEdgeCases:
     """Test suite for edge cases and special scenarios."""
 
     def test_multiple_independent_models(self):
         """Multiple independent versioned models can coexist."""
-        class UserV1(MigratableRow):
+        class UserV1(MigratableSQLModel, table=True):
             name: str = ""
 
-        class PostV1(MigratableRow):
+        class PostV1(MigratableSQLModel, table=True):
             title: str = ""
 
         assert UserV1.get_table_name() == "User"
@@ -407,7 +407,7 @@ class TestMigratableRowEdgeCases:
 
     def test_model_version_in_serialization(self):
         """model_version is included in model_dump."""
-        class DocV1(MigratableRow):
+        class DocV1(MigratableSQLModel, table=True):
             content: str = ""
 
         doc = DocV1(content="test", id=1)
@@ -418,7 +418,7 @@ class TestMigratableRowEdgeCases:
 
     def test_id_none_in_serialization(self):
         """id=None is included in model_dump."""
-        class DocV1(MigratableRow):
+        class DocV1(MigratableSQLModel, table=True):
             content: str = ""
 
         doc = DocV1(content="test")
@@ -426,10 +426,10 @@ class TestMigratableRowEdgeCases:
         assert dumped["id"] is None
 
     def test_complex_type_fields(self):
-        """Complex field types work with MigratableRow."""
+        """Complex field types work with MigratableSQLModel."""
         from datetime import datetime
 
-        class EventV1(MigratableRow):
+        class EventV1(MigratableSQLModel, table=True):
             title: str = ""
             timestamp: datetime = Field(default_factory=lambda: datetime(2024, 1, 1))
             tags: list[str] = Field(default_factory=list)
@@ -444,7 +444,7 @@ class TestMigratableRowEdgeCases:
 
     def test_optional_fields(self):
         """Optional fields work correctly."""
-        class ProfileV1(MigratableRow):
+        class ProfileV1(MigratableSQLModel, table=True):
             name: str = ""
             bio: str | None = None
 

@@ -5,9 +5,9 @@ from typing import Any, Type, TypeVar, Union
 import aiosqlite
 
 from .filters import ComparisonFilter, Filter
-from .row import MigratableRow
+from .models import MigratableSQLModel
 
-T = TypeVar("T", bound=MigratableRow)
+T = TypeVar("T", bound=MigratableSQLModel)
 
 class SQLDatabase:
     # TODO: support other databases like Postgres, MySQL, for now just support SQLite
@@ -15,7 +15,7 @@ class SQLDatabase:
     def __init__(
         self, 
         sqlite_database_path: str | Path,
-        schemas: list[Type[MigratableRow]],
+        schemas: list[Type[MigratableSQLModel]],
     ) -> None:
     
         self.sqlite_database_path = Path(sqlite_database_path)
@@ -127,7 +127,7 @@ class SQLDatabase:
         except Exception:
             return set()
     
-    async def _create_table(self, db: aiosqlite.Connection, schema: Type[MigratableRow]) -> None:
+    async def _create_table(self, db: aiosqlite.Connection, schema: Type[MigratableSQLModel]) -> None:
         """Create a new table for the given schema."""
         columns = ["id INTEGER PRIMARY KEY AUTOINCREMENT", "model_version INTEGER DEFAULT 1"]
         
@@ -148,7 +148,7 @@ class SQLDatabase:
         create_table_sql = f"CREATE TABLE IF NOT EXISTS {schema.get_table_name()} ({columns_sql})"
         await db.execute(create_table_sql)
     
-    async def _migrate_schema(self, db: aiosqlite.Connection, schema: Type[MigratableRow], existing_columns: set[str]) -> None:
+    async def _migrate_schema(self, db: aiosqlite.Connection, schema: Type[MigratableSQLModel], existing_columns: set[str]) -> None:
         """Add any missing columns to an existing table for schema evolution."""
         table_name = schema.get_table_name()
         

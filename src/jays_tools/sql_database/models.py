@@ -8,19 +8,22 @@ from pydantic.fields import FieldInfo
 VERSION_REGEX = re.compile(r".*[vV](?P<model_number>\d*)$")
 
 
-class MigratableRow(BaseModel):
+class MigratableSQLModel(BaseModel):
     id: int | None = Field(default=None, description="Auto-increment database ID")
     model_version: int = 1
 
     __table_name__: ClassVar[str]
     __model_version__: ClassVar[int] = 1  # Private class var for version tracking
-    __previous_model__: ClassVar[Type['MigratableRow'] | None] = None
+    __previous_model__: ClassVar[Type['MigratableSQLModel'] | None] = None
 
     def __init_subclass__(
         cls, 
-        previous_model: Type['MigratableRow'] | None = None, 
+        previous_model: Type['MigratableSQLModel'] | None = None, 
         **kwargs
     ):
+        if "table" in kwargs:
+            del kwargs["table"]
+        
         super().__init_subclass__(**kwargs)
 
         match = VERSION_REGEX.match(cls.__name__)
@@ -53,8 +56,8 @@ class MigratableRow(BaseModel):
             cls.__previous_model__ = None
             return
 
-        if not issubclass(previous_model, MigratableRow):
-            raise ValueError("previous_model must be a subclass of MigratableRow")
+        if not issubclass(previous_model, MigratableSQLModel):
+            raise ValueError("previous_model must be a subclass of MigratableSQLModel")
         
         if previous_model.__table_name__ != cls.__table_name__:
             raise ValueError(
@@ -79,7 +82,7 @@ class MigratableRow(BaseModel):
         cls.__previous_model__ = previous_model
 
     @classmethod
-    def get_model_from_version(cls, version: int) -> Type['MigratableRow'] | None:
+    def get_model_from_version(cls, version: int) -> Type['MigratableSQLModel'] | None:
         current_model = cls
         while current_model is not None:
             if current_model.__model_version__ == version:
@@ -154,7 +157,7 @@ class MigratableRow(BaseModel):
         return cls.model_construct(**data)
 
     @classmethod
-    def migrate(cls, previous: 'MigratableRow') -> 'MigratableRow':
+    def migrate(cls, previous: 'MigratableSQLModel') -> 'MigratableSQLModel':
         """Convert from previous model to current model. Must be implemented if there is a previous model."""
         raise NotImplementedError(
             f"{cls.__name__} must implement migrate() to migrate from {previous.__class__.__name__}"
