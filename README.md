@@ -59,10 +59,18 @@ Async SQLite database with type-safe row models and automatic migrations.
 ```python
 from jays_tools.sql_database import SQLDatabase, EqualTo
 
-db = SQLDatabase("app.db", [User])
+# Initialize with table models
+db = SQLDatabase("app.db", tables=[User, Post])
 await db.initialize()
-await db.insert(User, User(name="Alice", email="alice@example.com"))
-result = await db.select_one(User, filter=EqualTo("email", "alice@example.com"))
+
+# Insert
+user = User(name="Alice", email="alice@example.com")
+await db.insert(user)
+
+# Find with filters
+results = await db.find(User, EqualTo("email", "alice@example.com"))
+for user in results:
+    print(user.name)
 ```
 
 ### Clean Architecture Framework
@@ -174,13 +182,13 @@ Use filter objects to query SQLDatabase:
 from jays_tools.sql_database import EqualTo, Like, GreaterThan
 
 # Simple filters
-user = await db.select_one(User, filter=EqualTo("email", "alice@example.com"))
-users = await db.select_all(User, filter=Like("name", "Al%"))
+results = await db.find(User, EqualTo("email", "alice@example.com"))
+results = await db.find(User, Like("name", "Al%"))
 
 # Combined filters
-active_users = await db.select_all(
+active_users = await db.find(
     User, 
-    filter=EqualTo("status", "active") & GreaterThan("user_id", 100)
+    EqualTo("status", "active") & GreaterThan("user_id", 100)
 )
 ```
 

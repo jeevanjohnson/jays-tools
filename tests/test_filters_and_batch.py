@@ -6,7 +6,7 @@ from pathlib import Path
 
 from jays_tools.sql_database import (
     SQLDatabase,
-    MigratableRow,
+    MigratableSQLModel,
     ComparisonFilter,
     LikeFilter,
     InFilter,
@@ -25,13 +25,13 @@ from jays_tools.sql_database import (
 
 
 # Test models
-class PersonV1(MigratableRow):
+class PersonV1(MigratableSQLModel):
     name: str = ""
     age: int = 0
     email: str = ""
 
 
-class ProductV1(MigratableRow):
+class ProductV1(MigratableSQLModel):
     title: str = ""
     price: float = 0.0
     quantity: int = 0

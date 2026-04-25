@@ -15,11 +15,11 @@ class SQLDatabase:
     def __init__(
         self, 
         sqlite_database_path: str | Path,
-        schemas: list[Type[MigratableSQLModel]],
+        tables: list[Type[MigratableSQLModel]],
     ) -> None:
     
         self.sqlite_database_path = Path(sqlite_database_path)
-        self.schemas = schemas
+        self.tables = tables
         self.initialized = False
 
     @staticmethod
@@ -79,16 +79,16 @@ class SQLDatabase:
             return
         
         async with aiosqlite.connect(self.sqlite_database_path) as db:
-            for schema in self.schemas:
-                table_name = schema.get_table_name()
+            for table in self.tables:
+                table_name = table.get_table_name()
                 existing_columns = await self._get_table_columns(db, table_name)
                 
                 if not existing_columns:
                     # Create new table
-                    await self._create_table(db, schema)
+                    await self._create_table(db, table)
                 else:
                     # Add any missing columns for schema evolution
-                    await self._migrate_schema(db, schema, existing_columns)
+                    await self._migrate_schema(db, table, existing_columns)
          
             await db.commit()
         
@@ -127,15 +127,15 @@ class SQLDatabase:
         except Exception:
             return set()
     
-    async def _create_table(self, db: aiosqlite.Connection, schema: Type[MigratableSQLModel]) -> None:
+    async def _create_table(self, db: aiosqlite.Connection, table: Type[MigratableSQLModel]) -> None:
         """Create a new table for the given schema."""
         columns = ["id INTEGER PRIMARY KEY AUTOINCREMENT", "model_version INTEGER DEFAULT 1"]
         
         # Dump an instance to see actual JSON values
-        instance = schema.from_migration({})
+        instance = table.from_migration({})
         dumped = instance.model_dump(mode="json")
         
-        for field_name in schema.get_fields().keys():
+        for field_name in table.get_fields().keys():
             if field_name in ('id', 'model_version'):
                 continue  # Already added above
             
@@ -145,18 +145,18 @@ class SQLDatabase:
             columns.append(f"{field_name} {sqlite_type}")
         
         columns_sql = ", ".join(columns)
-        create_table_sql = f"CREATE TABLE IF NOT EXISTS {schema.get_table_name()} ({columns_sql})"
+        create_table_sql = f"CREATE TABLE IF NOT EXISTS {table.get_table_name()} ({columns_sql})"
         await db.execute(create_table_sql)
     
-    async def _migrate_schema(self, db: aiosqlite.Connection, schema: Type[MigratableSQLModel], existing_columns: set[str]) -> None:
+    async def _migrate_schema(self, db: aiosqlite.Connection, table: Type[MigratableSQLModel], existing_columns: set[str]) -> None:
         """Add any missing columns to an existing table for schema evolution."""
-        table_name = schema.get_table_name()
+        table_name = table.get_table_name()
         
         # Dump an instance to see actual JSON values
-        instance = schema.from_migration({})
+        instance = table.from_migration({})
         dumped = instance.model_dump(mode="json")
         
-        for field_name in schema.get_fields().keys():
+        for field_name in table.get_fields().keys():
             if field_name in ('id', 'model_version') or field_name in existing_columns:
                 continue  # Skip ID, model_version, and existing columns
             
