@@ -17,111 +17,84 @@ Layer Stack (top to bottom):
 All layers are type-safe - mypy/Pylance will catch violations at development time.
 """
 
-from abc import ABC, abstractmethod
-from typing import Generic, Mapping, TypeAlias, TypeVar
 
-T_Repositories = TypeVar("T_Repositories", bound=Mapping)
-T_Services = TypeVar("T_Services", bound=Mapping)
-T_Adapters = TypeVar("T_Adapters", bound=Mapping)
-T_DomainUseCases = TypeVar("T_DomainUseCases", bound=Mapping)
-
-NoRepositories: TypeAlias = dict
-NoServices: TypeAlias = dict
-NoAdapters: TypeAlias = dict
-
-
-class Adapter(ABC):
+class Adapter:
     """Wraps external libraries and APIs."""
-
     pass
 
 
-class Repository(ABC):
+class Repository:
     """Data access layer - if it touches the filesystem, database, or any I/O, it belongs here."""
-
     pass
 
 
-class Service(ABC):
+class Service:
     """Pure math and calculations - just raw arithmetic, no I/O, no files."""
-
     pass
 
 
-class DomainUseCase(Generic[T_Repositories, T_Services, T_Adapters]):
+class Adapters:
+    """Container for all adapters."""
+    pass
+
+
+class Repositories:
+    """Container for all repositories."""
+    pass
+
+
+class Services:
+    """Container for all services."""
+    pass
+
+
+class DomainUseCase:
     """Orchestrates services, repositories, and adapters (shared across entry-points)."""
+    _required_attrs = ('repositories', 'services', 'adapters')
 
-    repositories: T_Repositories | NoRepositories
-    services: T_Services | NoServices
-    adapters: T_Adapters | NoAdapters
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        original_init = cls.__dict__.get('__init__')
 
-    def __init__(
-        self,
-        repositories: T_Repositories | None,
-        services: T_Services | None,
-        adapters: T_Adapters | None,
-    ) -> None:
-        self.repositories = repositories or NoRepositories()
-        self.services = services or NoServices()
-        self.adapters = adapters or NoAdapters()
+        def checked_init(self, *args, **kwargs):
+            if original_init is not None:
+                original_init(self, *args, **kwargs)
 
-    @classmethod
-    @abstractmethod
-    def init(cls) -> "DomainUseCase":
-        """Initialize and return instance with all dependencies wired.
+            missing = [a for a in cls._required_attrs if not hasattr(self, a)]
+            if missing:
+                raise TypeError(
+                    f"{cls.__name__}.__init__ must assign: {', '.join(missing)}"
+                )
 
-        Subclasses MUST implement this to explicitly declare how to create
-        their adapters, repositories, and services.
-
-        Example:
-        ```python
-        class RecalculateStats(DomainUseCase[UserRepositories, UserServices, NoAdapters]):
-            @classmethod
-            def init(cls) -> "RecalculateStats":
-                repositories: UserRepositories = {
-                    "users": JsonUserRepository("users.json"),
-                }
-                services: UserServices = {
-                    "rank_calc": RankCalculator(),
-                }
-                return cls(repositories, services, NoAdapters())
-        ```
-        """
-        pass
+        cls.__init__ = checked_init
 
 
-class UseCase(Generic[T_DomainUseCases]):
+class DomainUseCases:
+    """Container for all domain use cases."""
+    pass
+
+
+class UseCase:
     """Entry-point specific orchestration - formats response for specific client."""
+    _required_attrs = ("domains",)
 
-    def __init__(self, domain: T_DomainUseCases) -> None:
-        self.domain = domain
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        original_init = cls.__dict__.get('__init__')
 
-    @classmethod
-    @abstractmethod
-    def init(cls) -> "UseCase":
-        """Initialize and return instance with all domain usecases wired.
+        def checked_init(self, *args, **kwargs):
+            if original_init is not None:
+                original_init(self, *args, **kwargs)
 
-        Subclasses MUST implement this to explicitly declare which domain
-        usecases they depend on.
+            missing = [a for a in cls._required_attrs if not hasattr(self, a)]
+            if missing:
+                raise TypeError(
+                    f"{cls.__name__}.__init__ must assign: {', '.join(missing)}"
+                )
 
-        Example:
-        ```python
-        class SubmitScoreUseCase(UseCase[ServerDomainUseCases]):
-            @classmethod
-            def init(cls) -> "SubmitScoreUseCase":
-                domain_usecases: ServerDomainUseCases = {
-                    "recalculate": RecalculateStats.init(),
-                }
-                return cls(domain_usecases)
-        ```
-        """
-        pass
+        cls.__init__ = checked_init
 
 
-__all__ = [
-    "Adapter",
-    "Repository",
-    "Service",
-    "DomainUseCase",
-    "UseCase",
-]
+class UseCases:
+    """Container for all use cases."""
+    pass

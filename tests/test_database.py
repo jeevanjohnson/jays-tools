@@ -1,11 +1,13 @@
 """Tests for SQLDatabase async ORM functionality."""
 
-import pytest
 import asyncio
 import tempfile
+from datetime import date, datetime
 from pathlib import Path
-from datetime import datetime, date
+
+import pytest
 from pydantic import Field
+
 from jays_tools.sql_database.models import MigratableSQLModel
 from src.jays_tools.sql_database.database import SQLDatabase
 
@@ -89,6 +91,7 @@ class TestSQLDatabaseTypeMapping:
 
     def test_python_type_to_sqlite_type_unsupported_raises(self):
         """Unsupported type raises ValueError."""
+
         class CustomType:
             pass
 
@@ -150,6 +153,7 @@ class TestSQLDatabaseInitialization:
     @pytest.mark.asyncio
     async def test_initialize_creates_database_file(self, temp_db_path):
         """initialize() creates the database file."""
+
         class UserV1(MigratableSQLModel, table=True):
             name: str = ""
 
@@ -163,6 +167,7 @@ class TestSQLDatabaseInitialization:
     @pytest.mark.asyncio
     async def test_initialize_sets_initialized_flag(self, temp_db_path):
         """initialize() sets initialized flag to True."""
+
         class UserV1(MigratableSQLModel, table=True):
             name: str = ""
 
@@ -176,6 +181,7 @@ class TestSQLDatabaseInitialization:
     @pytest.mark.asyncio
     async def test_initialize_idempotent(self, temp_db_path):
         """initialize() is idempotent - can be called multiple times."""
+
         class UserV1(MigratableSQLModel, table=True):
             name: str = ""
 
@@ -187,6 +193,7 @@ class TestSQLDatabaseInitialization:
     @pytest.mark.asyncio
     async def test_initialize_creates_table_with_all_columns(self, temp_db_path):
         """initialize() creates table with id, model_version, and model fields."""
+
         class ProductV1(MigratableSQLModel, table=True):
             name: str = ""
             price: float = 0.0
@@ -203,6 +210,7 @@ class TestSQLDatabaseInitialization:
     @pytest.mark.asyncio
     async def test_initialize_multiple_schemas(self, temp_db_path):
         """initialize() creates tables for all schemas."""
+
         class UserV1(MigratableSQLModel, table=True):
             username: str = ""
 
@@ -228,6 +236,7 @@ class TestSQLDatabaseCRUD:
     @pytest.mark.asyncio
     async def test_insert_sets_auto_increment_id(self, temp_db_path):
         """insert() sets id to auto-incremented value."""
+
         class ItemV1(MigratableSQLModel, table=True):
             name: str = ""
 
@@ -243,6 +252,7 @@ class TestSQLDatabaseCRUD:
     @pytest.mark.asyncio
     async def test_insert_sequential_ids(self, temp_db_path):
         """insert() assigns sequential IDs."""
+
         class ItemV1(MigratableSQLModel, table=True):
             name: str = ""
 
@@ -258,6 +268,7 @@ class TestSQLDatabaseCRUD:
     @pytest.mark.asyncio
     async def test_insert_multiple_fields(self, temp_db_path):
         """insert() stores all model fields."""
+
         class UserV1(MigratableSQLModel, table=True):
             username: str = ""
             email: str = ""
@@ -277,6 +288,7 @@ class TestSQLDatabaseCRUD:
     @pytest.mark.asyncio
     async def test_find_empty_results(self, temp_db_path):
         """find() returns empty list when no matches."""
+
         class UserV1(MigratableSQLModel, table=True):
             username: str = ""
 
@@ -288,6 +300,7 @@ class TestSQLDatabaseCRUD:
     @pytest.mark.asyncio
     async def test_find_single_match(self, temp_db_path):
         """find() returns matching entry."""
+
         class UserV1(MigratableSQLModel, table=True):
             username: str = ""
 
@@ -302,6 +315,7 @@ class TestSQLDatabaseCRUD:
     @pytest.mark.asyncio
     async def test_find_multiple_matches(self, temp_db_path):
         """find() returns all matching entries."""
+
         class TagV1(MigratableSQLModel, table=True):
             category: str = ""
             label: str = ""
@@ -318,6 +332,7 @@ class TestSQLDatabaseCRUD:
     @pytest.mark.asyncio
     async def test_find_by_id(self, temp_db_path):
         """find() can filter by id."""
+
         class ItemV1(MigratableSQLModel, table=True):
             name: str = ""
 
@@ -332,6 +347,7 @@ class TestSQLDatabaseCRUD:
     @pytest.mark.asyncio
     async def test_find_empty_where_dict(self, temp_db_path):
         """find() with empty where dict returns all entries."""
+
         class DocV1(MigratableSQLModel, table=True):
             title: str = ""
 
@@ -346,6 +362,7 @@ class TestSQLDatabaseCRUD:
     @pytest.mark.asyncio
     async def test_update_modifies_entry(self, temp_db_path):
         """update() modifies entry in database."""
+
         class UserV1(MigratableSQLModel, table=True):
             name: str = ""
             email: str = ""
@@ -364,6 +381,7 @@ class TestSQLDatabaseCRUD:
     @pytest.mark.asyncio
     async def test_update_without_id_raises(self, temp_db_path):
         """update() without id raises ValueError."""
+
         class UserV1(MigratableSQLModel, table=True):
             name: str = ""
 
@@ -376,6 +394,7 @@ class TestSQLDatabaseCRUD:
     @pytest.mark.asyncio
     async def test_update_preserves_other_entries(self, temp_db_path):
         """update() doesn't affect other entries."""
+
         class ItemV1(MigratableSQLModel, table=True):
             name: str = ""
             quantity: int = 0
@@ -393,6 +412,7 @@ class TestSQLDatabaseCRUD:
     @pytest.mark.asyncio
     async def test_delete_removes_entry(self, temp_db_path):
         """delete() removes entry from database."""
+
         class ItemV1(MigratableSQLModel, table=True):
             name: str = ""
 
@@ -407,6 +427,7 @@ class TestSQLDatabaseCRUD:
     @pytest.mark.asyncio
     async def test_delete_without_id_raises(self, temp_db_path):
         """delete() without id raises ValueError."""
+
         class ItemV1(MigratableSQLModel, table=True):
             name: str = ""
 
@@ -419,6 +440,7 @@ class TestSQLDatabaseCRUD:
     @pytest.mark.asyncio
     async def test_delete_preserves_other_entries(self, temp_db_path):
         """delete() doesn't affect other entries."""
+
         class ItemV1(MigratableSQLModel, table=True):
             name: str = ""
 
@@ -439,6 +461,7 @@ class TestSQLDatabaseDataTypes:
     @pytest.mark.asyncio
     async def test_insert_and_retrieve_string(self, temp_db_path):
         """String fields are stored and retrieved correctly."""
+
         class DocV1(MigratableSQLModel, table=True):
             content: str = ""
 
@@ -452,6 +475,7 @@ class TestSQLDatabaseDataTypes:
     @pytest.mark.asyncio
     async def test_insert_and_retrieve_integer(self, temp_db_path):
         """Integer fields are stored and retrieved correctly."""
+
         class CounterV1(MigratableSQLModel, table=True):
             value: int = 0
 
@@ -465,6 +489,7 @@ class TestSQLDatabaseDataTypes:
     @pytest.mark.asyncio
     async def test_insert_and_retrieve_float(self, temp_db_path):
         """Float fields are stored and retrieved correctly."""
+
         class MeasureV1(MigratableSQLModel, table=True):
             distance: float = 0.0
 
@@ -478,6 +503,7 @@ class TestSQLDatabaseDataTypes:
     @pytest.mark.asyncio
     async def test_insert_and_retrieve_list(self, temp_db_path):
         """List fields are JSON-encoded and deserialized."""
+
         class ConfigV1(MigratableSQLModel, table=True):
             options: list[str] = Field(default_factory=list)
 
@@ -491,6 +517,7 @@ class TestSQLDatabaseDataTypes:
     @pytest.mark.asyncio
     async def test_insert_and_retrieve_dict(self, temp_db_path):
         """Dict fields are JSON-encoded and deserialized."""
+
         class SettingV1(MigratableSQLModel, table=True):
             config: dict = Field(default_factory=dict)
 
@@ -504,6 +531,7 @@ class TestSQLDatabaseDataTypes:
     @pytest.mark.asyncio
     async def test_insert_and_retrieve_bool(self, temp_db_path):
         """Bool fields are stored as INTEGER and retrieved as bool."""
+
         class FeatureV1(MigratableSQLModel, table=True):
             enabled: bool = False
 
@@ -517,6 +545,7 @@ class TestSQLDatabaseDataTypes:
     @pytest.mark.asyncio
     async def test_insert_and_retrieve_optional_field(self, temp_db_path):
         """Optional fields can be None."""
+
         class ProfileV1(MigratableSQLModel, table=True):
             name: str = ""
             bio: str | None = None
@@ -535,6 +564,7 @@ class TestSQLDatabaseSchemaEvolution:
     @pytest.mark.asyncio
     async def test_schema_evolution_add_column(self, temp_db_path):
         """Schema evolution adds new column with ALTER TABLE."""
+
         class UserV1(MigratableSQLModel, table=True):
             name: str = ""
 
@@ -566,6 +596,7 @@ class TestSQLDatabaseSchemaEvolution:
     @pytest.mark.asyncio
     async def test_schema_evolution_insert_new_version(self, temp_db_path):
         """After schema evolution, can insert new version."""
+
         class ItemV1(MigratableSQLModel, table=True):
             name: str = ""
 
